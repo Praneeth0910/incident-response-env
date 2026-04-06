@@ -11,7 +11,7 @@ tags: ["openenv", "incident-response", "sre", "rl", "production"]
 
 observation_space:
   type: object
-  fields:
+  properties:
     message:
       type: string
       description: Current observation from the environment
@@ -31,7 +31,7 @@ observation_space:
 
 action_space:
   type: object
-  fields:
+  properties:
     action_type:
       type: string
       enum:
