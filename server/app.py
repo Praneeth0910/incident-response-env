@@ -19,6 +19,14 @@ app.add_middleware(
 env = IncidentResponseEnv()
 
 
+@app.get("/")
+def root():
+    return {
+        "status": "ok", 
+        "message": "Incident Response Environment is running. Use /docs for API documentation."
+    }
+
+
 @app.get("/health")
 def health():
     return {"status": "ok", "env": "incident-response-env", "version": "1.0.0"}
