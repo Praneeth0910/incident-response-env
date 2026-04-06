@@ -25,7 +25,7 @@ def health():
 
 
 @app.post("/reset", response_model=Observation)
-def reset(request: ResetRequest = ResetRequest()):
+def reset(request: ResetRequest):
     obs = env.reset(task_id=request.task_id, seed=request.seed)
     return obs
 

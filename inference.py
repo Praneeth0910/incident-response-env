@@ -18,7 +18,7 @@ from openai import OpenAI
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN     = os.getenv("HF_TOKEN")
+HF_TOKEN     = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
 ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
 BENCHMARK    = "incident-response-env"
 
@@ -250,7 +250,7 @@ def run_episode(client: OpenAI, task_id: str) -> dict:
 
 def main():
     if not HF_TOKEN:
-        print("ERROR: HF_TOKEN environment variable not set.", file=sys.stderr)
+        print("ERROR: HF_TOKEN or OPENAI_API_KEY environment variable not set.", file=sys.stderr)
         sys.exit(1)
 
     client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
