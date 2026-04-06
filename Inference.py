@@ -133,17 +133,27 @@ def parse_action(text: str) -> dict:
 
 
 def get_llm_action(client: OpenAI, history: list) -> dict:
-    try:
-        resp = client.chat.completions.create(
-            model=MODEL_NAME,
-            messages=history,
-            max_tokens=200,
-            temperature=0.0,
-        )
-        raw = resp.choices[0].message.content or ""
-        return parse_action(raw), raw
-    except Exception as e:
-        return {"action_type": "check_metrics", "target": "api-gateway"}, str(e)
+    import time
+    for attempt in range(3):
+        try:
+            resp = client.chat.completions.create(
+                model=MODEL_NAME,
+                messages=history,
+                max_tokens=200,
+                temperature=0.0,
+            )
+            raw = resp.choices[0].message.content or ""
+            print(f"[DEBUG] LLM raw response: {raw[:300]}", flush=True)
+            action = parse_action(raw)
+            # If fallback triggered, log it clearly
+            if action == {"action_type": "check_metrics", "target": "api-gateway"} and "{" not in raw:
+                print(f"[WARN] parse fallback triggered — raw was empty or unparseable", flush=True)
+            return action, raw
+        except Exception as e:
+            print(f"[ERROR] LLM call failed (attempt {attempt+1}/3): {e}", flush=True)
+            time.sleep(5 * (attempt + 1))  # backoff: 5s, 10s, 15s
+    # all retries failed
+    return {"action_type": "check_metrics", "target": "api-gateway"}, "LLM_ERROR"
 
 
 # ── Episode runner ────────────────────────────────────────────────────────────
