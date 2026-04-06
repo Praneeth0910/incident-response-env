@@ -6,7 +6,7 @@ description: >
   and declares the correct resolution. Models real SRE workflows with
   partial observability, red herrings, and time pressure.
 
-author: "your-hf-username"
+author: "ZenkuIshigami09"
 tags: ["openenv", "incident-response", "sre", "rl", "production"]
 
 observation_space:
@@ -86,9 +86,9 @@ reward:
     time decay after 50% of steps used, bonus for fast correct RCA declaration.
 
 endpoints:
-  reset: POST /reset
-  step: POST /step
-  state: GET /state
-  health: GET /health
-  grade: GET /grade
-  tasks: GET /tasks
+  reset: /reset
+  step: /step
+  state: /state
+  health: /health
+  grade: /grade
+  tasks: /tasks
