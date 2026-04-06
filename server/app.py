@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from models import Action, Observation, ResetRequest, StepResponse
@@ -33,7 +34,9 @@ def health():
 
 
 @app.post("/reset", response_model=Observation)
-def reset(request: ResetRequest):
+def reset(request: Optional[ResetRequest] = None):
+    if request is None:
+        request = ResetRequest()
     obs = env.reset(task_id=request.task_id, seed=request.seed)
     return obs
 
