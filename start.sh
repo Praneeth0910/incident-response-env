@@ -7,4 +7,4 @@ echo "Waiting for server to start..."
 sleep 5
 
 # Run inference with correct port
-ENV_BASE_URL=http://localhost:7860 python Inference.py
+ENV_BASE_URL=http://localhost:7860 python inference.py
