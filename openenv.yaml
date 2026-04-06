@@ -1,0 +1,94 @@
+name: incident-response-env
+version: "1.0.0"
+description: >
+  Production incident response environment. An LLM agent investigates
+  a simulated microservices system, identifies root causes of failures,
+  and declares the correct resolution. Models real SRE workflows with
+  partial observability, red herrings, and time pressure.
+
+author: "your-hf-username"
+tags: ["openenv", "incident-response", "sre", "rl", "production"]
+
+observation_space:
+  type: object
+  fields:
+    message:
+      type: string
+      description: Current observation from the environment
+    step:
+      type: integer
+      description: Current step number
+    done:
+      type: boolean
+      description: Whether the episode has ended
+    alert:
+      type: string
+      description: The original incident alert (persists across steps)
+    metrics:
+      type: object
+      nullable: true
+      description: Service metrics if check_metrics was called
+
+action_space:
+  type: object
+  fields:
+    action_type:
+      type: string
+      enum:
+        - read_logs
+        - check_metrics
+        - check_health
+        - run_db_query
+        - restart_service
+        - rollback_deployment
+        - declare_rca
+      description: Type of investigative or corrective action
+    target:
+      type: string
+      description: >
+        Service name (api-gateway, auth-service, order-service,
+        notification-service, redis-cache, postgres-db)
+        or fault type for declare_rca
+
+tasks:
+  - id: task_easy
+    name: "OOM crash — single service"
+    difficulty: easy
+    max_steps: 10
+    description: >
+      Notification service crashed due to out-of-memory error.
+      Symptoms visible in logs within 2-3 targeted actions.
+
+  - id: task_medium
+    name: "Cascading failure from bad deployment"
+    difficulty: medium
+    max_steps: 15
+    description: >
+      Bad deployment on order-service caused cascading failures.
+      Auth service appears affected but is a victim, not the cause.
+      Requires correlating deployment events across 3 services.
+
+  - id: task_hard
+    name: "Redis connection pool exhaustion with red herring"
+    difficulty: hard
+    max_steps: 20
+    description: >
+      Redis cache connection pool is exhausted causing cascading timeouts.
+      Order service has a high CPU spike that is a deliberate red herring.
+      Requires DB query to confirm pool exhaustion and resist the distraction.
+
+reward:
+  range: [-1.0, 1.0]
+  dense: true
+  description: >
+    Per-step partial rewards for relevant evidence gathering (+0.05 to +0.12),
+    penalties for redundant reads (-0.05) and wrong interventions (-0.20),
+    time decay after 50% of steps used, bonus for fast correct RCA declaration.
+
+endpoints:
+  reset: POST /reset
+  step: POST /step
+  state: GET /state
+  health: GET /health
+  grade: GET /grade
+  tasks: GET /tasks
