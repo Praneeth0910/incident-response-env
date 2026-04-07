@@ -6,4 +6,4 @@ until curl -sf http://localhost:7860/health > /dev/null; do
   sleep 1
 done
 
-ENV_BASE_URL=http://localhost:7860 python Inference.py
+ENV_BASE_URL=http://localhost:7860 python3 inference.py
