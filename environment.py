@@ -169,17 +169,19 @@ class IncidentResponseEnv:
             ),
             step=0,
             done=False,
-            alert=self._task["alert"],
+            alert=self._task["alert"] if self._task else "",
         )
 
     # ── step ──────────────────────────────────────────────────────────────────
 
     def step(self, action: Action) -> Tuple[Observation, Reward, bool, Dict[str, Any]]:
-        if self._done:
+        if self._done or self._task is None:
             raise RuntimeError("Episode finished. Call reset() first.")
 
         self._step_count += 1
         task = self._task
+        if task is None:
+            raise RuntimeError("Task is not initialized. Call reset() first.")
         fault_svc = task["fault_service"]
         fault_type = task["fault_type"]
         max_steps = task["max_steps"]
@@ -334,7 +336,7 @@ class IncidentResponseEnv:
             message=message,
             step=self._step_count,
             done=done,
-            alert=self._task["alert"],
+            alert=self._task["alert"] if self._task else "",
             metrics=metrics,
         )
         rew = Reward(value=reward_value, reason=reward_reason)
