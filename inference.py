@@ -15,6 +15,8 @@ import sys
 import requests
 from openai import OpenAI
 
+from benchmark_runner import run_benchmark
+
 # ── Config ────────────────────────────────────────────────────────────────────
 
 API_BASE_URL = os.getenv("API_BASE_URL")
@@ -264,30 +266,16 @@ def run_episode(client: OpenAI, task_id: str) -> dict:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    if not API_KEY:
-        print("ERROR: API_KEY environment variable not set (should be injected by LiteLLM proxy).", file=sys.stderr)
+    try:
+        run_benchmark(
+            model_name=MODEL_NAME,
+            api_base_url=API_BASE_URL,
+            api_key=API_KEY,
+            env_base_url=ENV_BASE_URL,
+        )
+    except Exception as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)
-
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-
-    results = []
-    for task_id in TASKS:
-        result = run_episode(client, task_id)
-        results.append(result)
-
-    print("\n" + "=" * 55, flush=True)
-    print("FINAL SUMMARY", flush=True)
-    print("=" * 55, flush=True)
-    total  = sum(r["score"] for r in results)
-    avg    = total / len(results)
-    solved = sum(1 for r in results if r["success"])
-    for r in results:
-        status = "PASS" if r["success"] else "FAIL"
-        print(f"  {r['task_id']:12} score={r['score']:.4f} "
-              f"steps={r['steps']:3} [{status}]", flush=True)
-    print(f"\n  Average : {avg:.4f}", flush=True)
-    print(f"  Total   : {total:.4f} / {len(results)}", flush=True)
-    print(f"  Solved  : {solved} / {len(results)}", flush=True)
 
 
 if __name__ == "__main__":

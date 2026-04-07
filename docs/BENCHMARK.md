@@ -8,16 +8,16 @@
 ```bash
 # Run benchmark with default model (Qwen2.5-72B via HuggingFace)
 export HF_TOKEN=hf_your_token
-python Inference.py
+python inference.py
 
 # Run with a specific model
-MODEL_NAME=meta-llama/Llama-3.3-70B-Instruct python Inference.py
+MODEL_NAME=meta-llama/Llama-3.3-70B-Instruct python inference.py
 
 # Run with Groq (faster, free tier)
 API_BASE_URL=https://api.groq.com/openai/v1 \
 HF_TOKEN=gsk_your_groq_key \
 MODEL_NAME=llama-3.3-70b-versatile \
-python Inference.py
+python inference.py
 ```
 
 ---
@@ -67,50 +67,50 @@ uvicorn server.app:app --host 0.0.0.0 --port 7860
 
 ### Step 2: Run each model
 ```bash
-# Create results directory
-mkdir -p benchmark_results
-
 # Model 1: Qwen2.5-72B
 MODEL_NAME=Qwen/Qwen2.5-72B-Instruct \
 API_BASE_URL=https://router.huggingface.co/v1 \
 HF_TOKEN=$HF_TOKEN \
-python Inference.py 2>&1 | tee benchmark_results/qwen_$(date +%Y%m%dT%H%M%S).log
+python inference.py
 
 # Model 2: Llama 3.3-70B (via Groq)
 MODEL_NAME=llama-3.3-70b-versatile \
 API_BASE_URL=https://api.groq.com/openai/v1 \
 HF_TOKEN=$GROQ_KEY \
-python Inference.py 2>&1 | tee benchmark_results/llama_$(date +%Y%m%dT%H%M%S).log
+python inference.py
 
 # Model 3: Mixtral
 MODEL_NAME=mixtral-8x7b-32768 \
 API_BASE_URL=https://api.groq.com/openai/v1 \
 HF_TOKEN=$GROQ_KEY \
-python Inference.py 2>&1 | tee benchmark_results/mixtral_$(date +%Y%m%dT%H%M%S).log
+python inference.py
 
 # Model 4: GPT-4o-mini
 MODEL_NAME=gpt-4o-mini \
 API_BASE_URL=https://api.openai.com/v1 \
 HF_TOKEN=$OPENAI_KEY \
-python Inference.py 2>&1 | tee benchmark_results/gpt4omini_$(date +%Y%m%dT%H%M%S).log
+python inference.py
 
 # Model 5: Gemma2-9B
 MODEL_NAME=gemma2-9b-it \
 API_BASE_URL=https://api.groq.com/openai/v1 \
 HF_TOKEN=$GROQ_KEY \
-python Inference.py 2>&1 | tee benchmark_results/gemma2_$(date +%Y%m%dT%H%M%S).log
+python inference.py
 ```
 
-### Step 3: Parse logs to benchmark.json
-```bash
-python scripts/parse_benchmark.py benchmark_results/
-```
+Every benchmark run now writes or updates `benchmark.json` automatically in the repo root. The dashboard reads that file directly for summary stats, leaderboard rows, and the latest benchmark log.
 
 ---
 
 ## benchmark.json Schema
 
-Each run produces a timestamped JSON file:
+`benchmark.json` is now a persistent benchmark store. It keeps:
+
+- `latest_run` for the newest model execution
+- `leaderboard` for the latest run per model
+- `runs[]` as the historical list of benchmark executions
+
+Each run object stored in `latest_run` and `runs[]` uses this shape:
 
 ```json
 {
@@ -120,7 +120,7 @@ Each run produces a timestamped JSON file:
   "api_base": "https://router.huggingface.co/v1",
   "tasks": {
     "task_easy": {
-      "score": 1.0000,
+      "score": 0.9990,
       "steps": 4,
       "success": true,
       "rewards": [0.07, 0.10, 0.30, 0.85]
@@ -132,7 +132,7 @@ Each run produces a timestamped JSON file:
       "rewards": [0.05, 0.08, 0.10, 0.00, 0.00, 0.30, -0.05, 0.05, ...]
     },
     "task_hard": {
-      "score": 0.0000,
+      "score": 0.0010,
       "steps": 20,
       "success": false,
       "rewards": [0.00, -0.05, -0.05, ...]
