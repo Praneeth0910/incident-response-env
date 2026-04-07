@@ -53,12 +53,13 @@ root cause as fast as possible. This environment simulates that exact task.
 ## Reward function
 
 - `+0.05` to `+0.12` — relevant evidence found
-- `-0.05` — redundant action (already checked)
+- `+0.005` — redundant action (already checked)
 - `+0.30` — correct intervention (restart/rollback)
-- `-0.20` — wrong service restarted
-- `+0.50` + time bonus — correct RCA declared
-- `0.0` — wrong RCA (not penalized, just no reward)
-- Cumulative clamped to `[-1.0, 1.0]`
+- `+0.05` — wrong service restarted 
+- `+0.01` — wrong service rolled back
+- `+0.50` + time bonus + evidence bonus — correct RCA declared
+- `+0.001` — wrong RCA
+- Cumulative strictly clamped to `[0.01, 0.99]`
 
 ## Baseline scores
 
@@ -73,6 +74,7 @@ root cause as fast as possible. This environment simulates that exact task.
 pip install -r requirements.txt
 uvicorn server.app:app --host 0.0.0.0 --port 7860
 ```
+> The web dashboard is accessible at `http://localhost:7860/frontend` 
 
 ## Docker
 ```bash
