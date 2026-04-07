@@ -215,7 +215,7 @@ class IncidentResponseEnv:
                     reward_reason = "gateway logs show symptoms (not root cause)"
                     self._relevant_evidence_found.add("logs_gateway")
                 else:
-                    reward_value = 0.0
+                    reward_value = 0.01
                     reward_reason = "no relevant signal in these logs"
 
             # ── check_metrics ─────────────────────────────────────────────────
@@ -231,7 +231,7 @@ class IncidentResponseEnv:
                     reward_value = 0.02
                     reward_reason = "metrics look suspicious but this is not the fault service"
                 else:
-                    reward_value = 0.0
+                    reward_value = 0.01
                     reward_reason = "metrics normal"
 
             # ── check_health ──────────────────────────────────────────────────
@@ -248,7 +248,7 @@ class IncidentResponseEnv:
                     self._relevant_evidence_found.add("health_fault_svc")
                 else:
                     status = random.choice(["UP", "UP", "DEGRADED"])
-                    reward_value = 0.0
+                    reward_value = 0.001
                     reward_reason = "service appears healthy"
                 message = f"Health check {action.target}: {status}"
 
@@ -261,7 +261,7 @@ class IncidentResponseEnv:
                     reward_reason = "DB query confirms connection pool exhaustion"
                     self._relevant_evidence_found.add("db_query")
                 else:
-                    reward_value = 0.01
+                    reward_value = 0.001
                     reward_reason = "DB query ran, limited signal"
 
             # ── restart_service ───────────────────────────────────────────────
@@ -275,7 +275,7 @@ class IncidentResponseEnv:
                     reward_reason = "restarted fault service but wrong fix for this fault type"
                     message = f"{action.target} restarted but issue persists — wrong fix."
                 else:
-                    reward_value = -0.20
+                    reward_value = 0.00007
                     reward_reason = "wrong service restarted — wasted time, cascading risk"
                     message = f"{action.target} restarted but errors persist. Cascading risk increased."
 
@@ -290,7 +290,7 @@ class IncidentResponseEnv:
                     reward_reason = "rollback on fault service but not the right fix"
                     message = f"Rollback completed but issue persists."
                 else:
-                    reward_value = -0.15
+                    reward_value = 0.0001 #used very less reward instead of negative reward.
                     reward_reason = "rolled back wrong service"
                     message = f"Rolled back {action.target} — no improvement. Wrong target."
 
@@ -299,18 +299,18 @@ class IncidentResponseEnv:
                 done = True
                 self._done = True
                 evidence_bonus = len(self._relevant_evidence_found) * 0.03
-                time_bonus = max(0.0, (max_steps - self._step_count) / max_steps) * 0.4
+                time_bonus = max(0.01, (max_steps - self._step_count) / max_steps) * 0.4
 
                 if action.target == fault_svc:
                     reward_value = round(0.50 + time_bonus + evidence_bonus, 3)
-                    reward_value = min(reward_value, 1.0)
+                    reward_value = min(reward_value, 0.9)
                     reward_reason = (
                         f"correct RCA: {fault_svc}. "
                         f"time_bonus={time_bonus:.2f} evidence_bonus={evidence_bonus:.2f}"
                     )
                     message = f"Root cause confirmed: {fault_svc} — {fault_type}. Incident resolved."
                 else:
-                    reward_value = 0.0
+                    reward_value = 0.001
                     reward_reason = f"wrong RCA. Actual fault: {fault_svc}"
                     message = f"Incorrect. The fault was in {fault_svc}, not {action.target}."
 
