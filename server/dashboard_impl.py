@@ -484,7 +484,7 @@ def _append_terminal(state: Dict[str, Any], line: str) -> None:
 
 
 def _feedback_meta(reward: float) -> Tuple[str, str, str]:
-    if reward > 0.02:
+    if reward > 0.01:
         return "POSITIVE", "feedback-pos", "&#10003;"
     if reward < 0:
         return "NEGATIVE", "feedback-neg", "&#10007;"

@@ -243,6 +243,3 @@ def create_dashboard():
                 gr.Markdown("> Not currently in an active incident.")
 
     return demo
-
-
-from .dashboard_impl import create_dashboard
