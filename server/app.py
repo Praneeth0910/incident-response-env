@@ -64,7 +64,9 @@ def state():
 
 @app.get("/grade")
 def grade():
-    return {"score": env.grade()}
+    score = env.grade()
+    score = max(0.001, min(0.999, score))  # double safety
+    return {"score": round(score, 4)}
 
 
 @app.get("/tasks")

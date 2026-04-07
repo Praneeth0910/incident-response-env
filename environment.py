@@ -303,7 +303,7 @@ class IncidentResponseEnv:
 
                 if action.target == fault_svc:
                     reward_value = round(0.50 + time_bonus + evidence_bonus, 3)
-                    reward_value = min(reward_value, 0.9)
+                    reward_value = min(reward_value, 0.99)  # never reach exactly 1.0
                     reward_reason = (
                         f"correct RCA: {fault_svc}. "
                         f"time_bonus={time_bonus:.2f} evidence_bonus={evidence_bonus:.2f}"
@@ -370,6 +370,7 @@ class IncidentResponseEnv:
     def grade(self) -> float:
         """Deterministic grader — returns float in [0.0, 1.0]."""
         if not self._done:
-            return 0.0
-        score = max(0.0, min(1.0, self._cumulative_reward))
+            return 0.001
+        raw = max(0.0, min(1.0, self._cumulative_reward))  # shift to [0.0, 1.0]
+        score = max(0.001, min(0.999, raw))
         return round(score, 4)

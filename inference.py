@@ -9,6 +9,7 @@ Mandatory environment variables:
 """
 
 import json
+import math
 import os
 import sys
 import requests
@@ -104,7 +105,20 @@ def env_step(action: dict) -> dict:
 def env_grade() -> float:
     r = requests.get(f"{ENV_BASE_URL}/grade", timeout=10)
     r.raise_for_status()
-    return r.json().get("score", 0.0)
+    return clamp_task_score(r.json().get("score", 0.001))
+
+
+def clamp_task_score(score: float) -> float:
+    """Keep validator-facing task scores strictly inside the open interval (0, 1)."""
+    try:
+        numeric = float(score)
+    except (TypeError, ValueError):
+        numeric = 0.001
+
+    if not math.isfinite(numeric):
+        numeric = 0.001
+
+    return round(min(0.999, max(0.001, numeric)), 4)
 
 
 # ── LLM action parsing ────────────────────────────────────────────────────────
@@ -163,7 +177,7 @@ def run_episode(client: OpenAI, task_id: str) -> dict:
 
     rewards = []
     steps_taken = 0
-    score = 0.0
+    score = 0.001
     success = False
 
     try:
@@ -227,12 +241,13 @@ def run_episode(client: OpenAI, task_id: str) -> dict:
                 history.append({"role": "user",
                                 "content": f"Error: {error_msg}. Try a different action."})
 
-        score   = env_grade()
+        score   = clamp_task_score(env_grade())
         success = score >= 0.6
 
     except Exception as e:
         print(f"[DEBUG] Episode error: {e}", flush=True)
-        score = max(0.0, min(1.0, sum(rewards))) if rewards else 0.0
+        fallback_score = sum(rewards) if rewards else 0.001
+        score = clamp_task_score(fallback_score)
 
     finally:
         log_end(
