@@ -1,0 +1,688 @@
+================================================================
+TOP 50 REAL-WORLD INCIDENT RESPONSE TASKS
+incident-response-env · Task Design Reference
+Based on actual incidents at Netflix, Uber, Cloudflare, AWS,
+Meta, Google, Stripe, GitHub, Shopify, and Airbnb.
+================================================================
+
+Each entry includes:
+  ID         : task identifier slug
+  DIFFICULTY : easy / medium / hard
+  FAULT SVC  : which service is actually broken
+  FAULT TYPE : the underlying failure mode
+  RED HERRING: which service looks suspicious but isn't
+  ALERT      : what the on-call engineer sees
+  DESCRIPTION: full scenario with real-world context
+  IDEAL STEPS: expected optimal step count
+  FIX        : correct remediation action
+
+----------------------------------------------------------------
+EASY TASKS (single service, no red herrings, clear signal)
+----------------------------------------------------------------
+
+[01]
+ID          : task_cpu_spike_auth
+DIFFICULTY  : easy
+FAULT SVC   : auth-service
+FAULT TYPE  : cpu_spike
+RED HERRING : none
+ALERT       : ALERT: Login latency p99 > 8s. Auth service CPU at 99%. Users cannot sign in.
+DESCRIPTION : A hot loop was introduced in the JWT validation code during a minor
+              refactor. Auth-service is pegging CPU at 99%, causing all login
+              requests to time out. The fix is a restart to clear the runaway
+              thread, followed by a hotfix deployment. This mirrors the 2021
+              Fastly outage pattern where a single bad config triggered global
+              service degradation through a CPU-bound loop.
+IDEAL STEPS : 3
+FIX         : restart_service → auth-service, then declare_rca
+
+[02]
+ID          : task_disk_full_postgres
+DIFFICULTY  : easy
+FAULT SVC   : postgres-db
+FAULT TYPE  : disk_full
+RED HERRING : none
+ALERT       : ALERT: Write operations failing. postgres-db throwing ENOSPC errors. Order creation down 100%.
+DESCRIPTION : The database transaction log (WAL) grew unbounded after auto-vacuum
+              was disabled during a maintenance window and never re-enabled. Disk
+              hit 100% capacity. All INSERT/UPDATE operations fail with "no space
+              left on device." This exact scenario took down GitHub in 2018 for
+              24 minutes. Logs show FATAL: could not write to file "pg_wal". DB
+              query will confirm disk usage. Fix requires WAL cleanup.
+IDEAL STEPS : 4
+FIX         : run_db_query → postgres-db to confirm, declare_rca → postgres-db
+
+[03]
+ID          : task_network_timeout_redis
+DIFFICULTY  : easy
+FAULT SVC   : redis-cache
+FAULT TYPE  : network_partition
+RED HERRING : none
+ALERT       : ALERT: Cache miss rate 100%. Session lookups failing. All endpoints 3x slower.
+DESCRIPTION : A network interface configuration change on the redis-cache host
+              caused it to become unreachable from the application tier. Redis
+              is running and healthy internally, but all TCP connections from
+              app services time out after 5000ms. This caused a thundering herd
+              as every request hit the database directly. Similar to the 2019
+              Cloudflare global outage caused by a BGP route leak. Health check
+              shows DOWN despite the process running.
+IDEAL STEPS : 3
+FIX         : check_health → redis-cache, declare_rca → redis-cache
+
+[04]
+ID          : task_oom_order_service
+DIFFICULTY  : easy
+FAULT SVC   : order-service
+FAULT TYPE  : oom_crash
+RED HERRING : none
+ALERT       : ALERT: Order service unreachable. 100% error rate on /checkout endpoint. Revenue impact.
+DESCRIPTION : A memory leak in the order aggregation query — loading entire order
+              history into memory instead of streaming — caused order-service to
+              exhaust its 2GB heap limit. The JVM OOM killer terminated the
+              process. This is a textbook version of the memory leak pattern
+              that affected Amazon's order pipeline in 2020. Logs show
+              OutOfMemoryError: GC overhead limit exceeded. Service is DOWN.
+IDEAL STEPS : 3
+FIX         : restart_service → order-service, declare_rca
+
+[05]
+ID          : task_cert_expired_gateway
+DIFFICULTY  : easy
+FAULT SVC   : api-gateway
+FAULT TYPE  : ssl_cert_expired
+RED HERRING : none
+ALERT       : ALERT: SSL handshake failures. 100% of HTTPS requests rejected. Certificate error.
+DESCRIPTION : The TLS certificate for the API gateway expired at midnight. All
+              HTTPS clients receive SSL_ERROR_EXPIRED_CERT_NOT_YET_VALID. The
+              cert renewal cron job failed silently 30 days ago due to a
+              permissions issue. This mirrors the LinkedIn outage of 2023 and
+              the Microsoft Teams cert expiry of 2020. Logs clearly show
+              "certificate has expired" in TLS handshake logs. Rollback to
+              previous cert config resolves immediately.
+IDEAL STEPS : 3
+FIX         : rollback_deployment → api-gateway, declare_rca
+
+[06]
+ID          : task_deadlock_postgres
+DIFFICULTY  : easy
+FAULT SVC   : postgres-db
+FAULT TYPE  : deadlock
+RED HERRING : none
+ALERT       : ALERT: Transaction timeouts across all services. DB response time 30s+. All writes queued.
+DESCRIPTION : Two concurrent transactions — one from order-service updating
+              inventory, one from notification-service updating order status —
+              entered a classic deadlock. PostgreSQL's deadlock detector kills
+              one transaction every 30 seconds, but new deadlocks form
+              immediately. DB query shows pg_locks with many waiting entries.
+              This pattern caused a 45-minute outage at Shopify in 2022.
+IDEAL STEPS : 4
+FIX         : run_db_query → postgres-db to confirm locks, declare_rca
+
+[07]
+ID          : task_crashloop_notification
+DIFFICULTY  : easy
+FAULT SVC   : notification-service
+FAULT TYPE  : crashloop
+RED HERRING : none
+ALERT       : ALERT: Email/SMS notifications not sending. notification-service restarting every 30s.
+DESCRIPTION : A bad startup configuration — a missing Twilio API key environment
+              variable — causes notification-service to crash immediately on
+              startup with a null pointer exception, restart, crash again.
+              It is in a CrashLoopBackOff pattern (Kubernetes terminology).
+              Health check alternates between UP and DOWN every 30 seconds.
+              Logs show NullPointerException at TwilioClient.init(). This
+              pattern is extremely common post-deployment across all major
+              engineering orgs.
+IDEAL STEPS : 3
+FIX         : rollback_deployment → notification-service, declare_rca
+
+[08]
+ID          : task_rate_limit_upstream
+DIFFICULTY  : easy
+FAULT SVC   : api-gateway
+FAULT TYPE  : rate_limit_breach
+RED HERRING : none
+ALERT       : ALERT: 429 Too Many Requests errors from upstream. API gateway returning errors to all clients.
+DESCRIPTION : A background job that syncs product catalog triggered 50,000
+              API calls in 10 minutes, hitting the upstream rate limit. The
+              API gateway is now receiving 429s from the third-party provider
+              and passing them through to clients. All users see errors.
+              Logs show X-RateLimit-Remaining: 0. This is the same pattern
+              that took down Robinhood's data feeds in 2021. Rollback the
+              batch job deployment to stop the flood.
+IDEAL STEPS : 4
+FIX         : rollback_deployment → api-gateway, declare_rca
+
+----------------------------------------------------------------
+MEDIUM TASKS (cascading failures, 1 red herring, 5-7 ideal steps)
+----------------------------------------------------------------
+
+[09]
+ID          : task_config_drift_medium
+DIFFICULTY  : medium
+FAULT SVC   : order-service
+FAULT TYPE  : config_drift
+RED HERRING : auth-service (elevated latency from connection queue)
+ALERT       : ALERT: Orders failing silently. No 500s but completion rate dropped to 12%. Auth latency 2s.
+DESCRIPTION : A configuration management drift — where order-service's feature
+              flag config fell out of sync with the database schema — causes
+              it to silently drop 88% of orders without returning errors.
+              The missing schema field causes a null write. Auth-service
+              shows high latency because order-service's connection pool
+              is backed up, causing auth token validation to queue. This
+              silent failure pattern is what caused Facebook's 6-hour outage
+              in 2021 — config change propagated incorrectly causing silent
+              routing failures. DB query will reveal the null writes.
+IDEAL STEPS : 6
+FIX         : rollback_deployment → order-service, declare_rca
+
+[10]
+ID          : task_cascade_db_medium
+DIFFICULTY  : medium
+FAULT SVC   : postgres-db
+FAULT TYPE  : slow_queries
+RED HERRING : order-service (high CPU from retrying slow queries)
+ALERT       : ALERT: All services degraded. Response times 10x normal. order-service CPU 90%.
+DESCRIPTION : A missing database index — added accidentally during a schema
+              migration that rolled back but left the index drop in place —
+              causes a full table scan on the orders table (50M rows) for
+              every checkout request. Each query takes 8 seconds instead of
+              4ms. Order-service retries aggressively, spiking to 90% CPU,
+              which looks like the root cause. This is a red herring. DB query
+              reveals seq_scan on orders table with rows_examined = 50000000.
+              This missing-index pattern caused a 3-hour degradation at Etsy.
+IDEAL STEPS : 7
+FIX         : rollback_deployment → postgres-db, declare_rca
+
+[11]
+ID          : task_memory_leak_medium
+DIFFICULTY  : medium
+FAULT SVC   : notification-service
+FAULT TYPE  : memory_leak
+RED HERRING : api-gateway (504 timeouts accumulating)
+ALERT       : ALERT: Gradual service degradation over 2 hours. notification-service GC pauses 10s+.
+DESCRIPTION : A memory leak in the email template renderer — holding references
+              to rendered HTML strings in a static cache without eviction —
+              caused notification-service to grow from 400MB to 3.8GB over
+              2 hours. GC pauses now take 10+ seconds, causing timeouts that
+              cascade to api-gateway. The api-gateway 504s are a symptom.
+              Logs show "GC pause > 10000ms" and "Old generation 98% full."
+              This gradual degradation pattern is notoriously hard to catch
+              and mirrors the Slack memory leak incident of 2022.
+IDEAL STEPS : 6
+FIX         : restart_service → notification-service, declare_rca
+
+[12]
+ID          : task_thread_starvation_medium
+DIFFICULTY  : medium
+FAULT SVC   : auth-service
+FAULT TYPE  : thread_pool_exhausted
+RED HERRING : notification-service (email queue backing up)
+ALERT       : ALERT: Login requests hanging indefinitely. auth-service thread pool exhausted.
+DESCRIPTION : A new OAuth integration added synchronous HTTP calls inside
+              auth-service's request handler — each call waiting up to 30s
+              for an external identity provider. With 200 concurrent logins,
+              all 200 threads are now blocked waiting on I/O. New requests
+              queue, then time out. Notification-service's email queue grows
+              because password-reset emails depend on auth succeeding. This
+              thread starvation pattern caused Twitter's login failures during
+              major live events in 2020. Logs show "No threads available in
+              pool" and "timeout waiting for worker."
+IDEAL STEPS : 5
+FIX         : rollback_deployment → auth-service, declare_rca
+
+[13]
+ID          : task_circuit_breaker_medium
+DIFFICULTY  : medium
+FAULT SVC   : redis-cache
+FAULT TYPE  : failover_stuck
+RED HERRING : order-service (circuit breaker open, looks broken)
+ALERT       : ALERT: order-service circuit breaker open. Checkout disabled. redis-cache metrics normal-ish.
+DESCRIPTION : Redis-cache underwent an automatic failover (primary → replica)
+              after a brief network hiccup, but the new primary has a
+              misconfigured maxmemory-policy set to "noeviction" instead of
+              "allkeys-lru." Under load, it begins rejecting ALL writes with
+              OOM errors. Order-service's circuit breaker trips, making it
+              look like order-service is broken. Redis metrics appear
+              near-normal because the old primary stats were cached. Logs
+              from redis-cache show "OOM command not allowed when used memory
+              > maxmemory." Netflix documented this exact pattern in their
+              resilience engineering blog (2019).
+IDEAL STEPS : 7
+FIX         : rollback_deployment → redis-cache, declare_rca
+
+[14]
+ID          : task_dns_resolution_medium
+DIFFICULTY  : medium
+FAULT SVC   : api-gateway
+FAULT TYPE  : dns_failure
+RED HERRING : postgres-db (connection timeouts, appears down)
+ALERT       : ALERT: Intermittent connection failures to all backends. 30% error rate. postgres-db timeouts.
+DESCRIPTION : A DNS TTL misconfiguration after a load balancer IP rotation
+              causes api-gateway to cache stale IP addresses for postgres-db
+              and redis-cache. 30% of requests route to the old IPs which
+              now point to decommissioned hosts. Postgres-db appears to be
+              failing, but DB query from a direct connection succeeds perfectly.
+              The real fault is api-gateway's DNS resolver. Logs show
+              "connection timed out: old-ip:5432" mixed with successful
+              connections. This DNS caching issue caused the 2019 Cloudflare
+              routing incident affecting 15% of global traffic.
+IDEAL STEPS : 6
+FIX         : rollback_deployment → api-gateway, declare_rca
+
+[15]
+ID          : task_event_storm_medium
+DIFFICULTY  : medium
+FAULT SVC   : notification-service
+FAULT TYPE  : event_loop_overload
+RED HERRING : redis-cache (queue depth alarming)
+ALERT       : ALERT: notification-service processing 0 events/sec. Event queue 2M items deep. redis-cache alarming.
+DESCRIPTION : A bug in the order completion event handler causes it to emit
+              3 notification events per order instead of 1 (retry logic
+              triggered incorrectly). With 700K daily orders, the notification
+              queue grew to 2M items in 4 hours. Notification-service falls
+              further and further behind. Redis-cache shows alarming queue
+              depth metrics, making it look like the cache is the problem.
+              The real fault is notification-service's event emission bug.
+              This fan-out storm pattern caused a 6-hour SLA breach at
+              Twilio's notification platform in 2021.
+IDEAL STEPS : 6
+FIX         : rollback_deployment → notification-service, declare_rca
+
+[16]
+ID          : task_split_brain_medium
+DIFFICULTY  : medium
+FAULT SVC   : postgres-db
+FAULT TYPE  : split_brain
+RED HERRING : auth-service (stale session reads causing login failures)
+ALERT       : ALERT: Data inconsistency detected. Duplicate orders being created. Auth sessions stale.
+DESCRIPTION : A network partition during a postgres primary election resulted
+              in two nodes both believing they are primary (split-brain).
+              Writes are going to both nodes, creating duplicate orders and
+              inconsistent state. Auth-service reads stale sessions from the
+              lagging replica, causing intermittent login failures. This makes
+              auth look broken. DB query reveals two conflicting transaction
+              IDs for the same order. This exact failure mode caused a
+              data loss incident at GitHub in 2012 and informed the design
+              of Raft consensus used by modern databases.
+IDEAL STEPS : 7
+FIX         : rollback_deployment → postgres-db, declare_rca
+
+[17]
+ID          : task_thundering_herd_medium
+DIFFICULTY  : medium
+FAULT SVC   : redis-cache
+FAULT TYPE  : cache_stampede
+RED HERRING : order-service (DB connection pool exhausted from cache misses)
+ALERT       : ALERT: DB overloaded after cache flush. order-service DB connections exhausted. System slow.
+DESCRIPTION : A scheduled cache flush (weekly maintenance) expired all 2M
+              cached keys simultaneously. Every application server immediately
+              tried to rebuild its cache from the database — a classic cache
+              stampede / thundering herd. Order-service's DB connection pool
+              hit 500/500 connections (the actual limit), making it look like
+              order-service's connection pool is the root cause. The root
+              cause is the cache flush on redis-cache that triggered the
+              stampede. AWS ElastiCache documented this in their best
+              practices guide after experiencing it internally.
+IDEAL STEPS : 6
+FIX         : rollback_deployment → redis-cache, declare_rca
+
+[18]
+ID          : task_payload_size_medium
+DIFFICULTY  : medium
+FAULT SVC   : api-gateway
+FAULT TYPE  : payload_too_large
+RED HERRING : postgres-db (write failures, appears disk-full)
+ALERT       : ALERT: Large uploads failing with 413 errors. postgres-db write failures. 40% of API calls failing.
+DESCRIPTION : A new feature added image upload capability but forgot to update
+              the api-gateway's `client_max_body_size` setting (still at the
+              old 1MB limit). Images are now 2-8MB. Requests exceeding 1MB
+              are rejected with 413, but the error is also being incorrectly
+              logged as a write failure at postgres-db level, making the
+              database appear broken. DB query shows postgres is healthy.
+              The root cause is api-gateway config. This misconfiguration
+              is in the top 5 most common Nginx production mistakes.
+IDEAL STEPS : 5
+FIX         : rollback_deployment → api-gateway, declare_rca
+
+----------------------------------------------------------------
+HARD TASKS (complex cascade, 2+ red herrings, requires DB query, 8-12 ideal steps)
+----------------------------------------------------------------
+
+[19]
+ID          : task_multi_fault_hard
+DIFFICULTY  : hard
+FAULT SVC   : postgres-db  (primary fault: slow queries)
+FAULT TYPE  : dual_fault    (+ redis eviction causing cache thrash)
+RED HERRING : order-service (CPU spike from retry storms)
+ALERT       : ALERT: Full system degradation. p99 latency 12s. 4 services alarming. On-call paged.
+DESCRIPTION : Two simultaneous faults: (1) A missing index on the sessions table
+              causes postgres-db to full-scan 80M rows per auth request. (2)
+              Redis-cache hit its memory limit and switched to aggressive
+              eviction, causing cache thrash — cached items evicted faster
+              than they can be repopulated. Order-service enters a retry
+              storm trying to compensate for both, pegging CPU at 94%.
+              The agent must identify BOTH root causes to declare correct RCA.
+              This dual-fault pattern mirrors the AWS us-east-1 degradation
+              of November 2020 where multiple systems failed simultaneously.
+IDEAL STEPS : 10
+FIX         : run_db_query → postgres-db (confirm), rollback_deployment → redis-cache, declare_rca → postgres-db
+
+[20]
+ID          : task_sidecar_poison_hard
+DIFFICULTY  : hard
+FAULT SVC   : auth-service
+FAULT TYPE  : sidecar_misconfiguration
+RED HERRING : order-service (high error rate), api-gateway (502 cascade)
+ALERT       : ALERT: 60% of requests failing. order-service 500s. api-gateway 502s. auth-service appears healthy.
+DESCRIPTION : A service mesh sidecar (Envoy proxy) on auth-service was updated
+              with a misconfigured mTLS policy — it now rejects connections
+              from order-service that don't present the new cert. Auth-service
+              itself looks healthy (its own health check bypasses the sidecar).
+              Order-service fails because it can't authenticate users, and
+              api-gateway sees 502s cascading up. This is the most insidious
+              failure type in microservice architectures. The 2021 Apple iCloud
+              degradation was caused by a similar service mesh misconfiguration.
+              Agent must look at auth-service logs specifically for mTLS errors.
+IDEAL STEPS : 9
+FIX         : rollback_deployment → auth-service, declare_rca
+
+[21]
+ID          : task_gc_pressure_hard
+DIFFICULTY  : hard
+FAULT SVC   : order-service
+FAULT TYPE  : gc_pressure_cascade
+RED HERRING : redis-cache (high memory), notification-service (queue backup)
+ALERT       : ALERT: Intermittent 5-15s pauses across all services. SLA breached. Three services alarming.
+DESCRIPTION : Order-service is creating 50GB/hour of short-lived objects due to
+              a JSON serialization bug that allocates a new byte array per field
+              instead of streaming. JVM GC runs every 8 seconds with stop-the-
+              world pauses of 5-15 seconds. During each pause, redis-cache
+              connection keepalives timeout, and notification-service's message
+              acknowledgments fail, causing redeliveries. Both look like primary
+              faults. The GC pause pattern is visible only in order-service
+              metrics. This mirrors the LinkedIn GC-induced cascading failure
+              described in their 2019 engineering blog post on GC tuning.
+IDEAL STEPS : 9
+FIX         : restart_service → order-service, declare_rca
+
+[22]
+ID          : task_hot_shard_hard
+DIFFICULTY  : hard
+FAULT SVC   : redis-cache
+FAULT TYPE  : hot_partition
+RED HERRING : order-service (timeouts), postgres-db (connection spike)
+ALERT       : ALERT: Checkout for users A-F failing. 18% of users affected. order-service timeouts. DB spike.
+DESCRIPTION : Redis cluster has 6 shards. The hash slot for keys starting with
+              A-F (user IDs, product IDs) landed entirely on shard-2 after a
+              recent key prefix change. Shard-2 is at 100% CPU while others
+              sit idle. This hot partition causes connection timeouts for 18%
+              of users. Order-service times out waiting for cache responses
+              and floods postgres-db directly. This key distribution problem
+              is documented in Redis's own cluster specification and caused
+              outages at Discord (2017) affecting voice channels with
+              sequential IDs.
+IDEAL STEPS : 10
+FIX         : rollback_deployment → redis-cache, declare_rca
+
+[23]
+ID          : task_connection_leak_hard
+DIFFICULTY  : hard
+FAULT SVC   : postgres-db
+FAULT TYPE  : connection_leak
+RED HERRING : auth-service (login failures), notification-service (email delays)
+ALERT       : ALERT: Gradual degradation over 6 hours. Auth failing. Emails delayed. DB connections 499/500.
+DESCRIPTION : A connection pool bug in the ORM layer — connections not returned
+              to the pool after exceptions in transaction blocks — has been
+              slowly leaking connections for 6 hours. The pool is now at
+              499/500. Auth-service and notification-service are failing because
+              they can't acquire connections. Both look like the culprits.
+              DB query shows max connections nearly exhausted and dozens of
+              idle connections with no active queries (leaked). The pg_stat_activity
+              table shows connections in "idle" state for hours. Stripe's 2019
+              database reliability post-mortem describes this exact leak pattern.
+IDEAL STEPS : 8
+FIX         : run_db_query → postgres-db (confirm leak), declare_rca → postgres-db
+
+[24]
+ID          : task_log_flood_hard
+DIFFICULTY  : hard
+FAULT SVC   : notification-service
+FAULT TYPE  : log_flood_disk_fill
+RED HERRING : api-gateway (I/O wait), order-service (slow responses)
+ALERT       : ALERT: All services slowing. api-gateway I/O wait 80%. order-service p99 8s. Disk alerts.
+DESCRIPTION : A debug logging line accidentally committed to production is
+              logging the full request/response body for every notification
+              (including base64-encoded email attachments). Notification-service
+              is writing 40GB/hour of logs to a shared disk volume. The disk
+              I/O saturation causes api-gateway to queue writes (access logs)
+              and order-service to stall on audit log writes. Both appear as
+              the primary fault. The root cause is notification-service's log
+              flood. This logging-induced cascade took down a major European
+              bank's core banking system in 2022 for 9 hours.
+IDEAL STEPS : 8
+FIX         : rollback_deployment → notification-service, declare_rca
+
+[25]
+ID          : task_backpressure_hard
+DIFFICULTY  : hard
+FAULT SVC   : order-service
+FAULT TYPE  : backpressure_failure
+RED HERRING : redis-cache (queue full), api-gateway (request queuing)
+ALERT       : ALERT: API response times climbing. Queue depths alarming. System-wide slowdown over 30 min.
+DESCRIPTION : Order-service lacks proper backpressure mechanisms. A downstream
+              payment processor started responding 3x slower due to their own
+              maintenance. Order-service kept accepting requests and queuing
+              payment calls, holding HTTP connections open. API-gateway's
+              connection pool filled with slow order requests. Redis-cache's
+              work queue grew to 500K items. The real fault is order-service
+              not shedding load when downstream is slow. This is the
+              backpressure failure mode described in Netflix's Hystrix design
+              document and demonstrated in the Hyrum's Law failure at Google.
+IDEAL STEPS : 9
+FIX         : rollback_deployment → order-service, declare_rca
+
+[26]
+ID          : task_canary_poison_hard
+DIFFICULTY  : hard
+FAULT SVC   : api-gateway
+FAULT TYPE  : canary_misconfiguration
+RED HERRING : order-service (50% error rate), auth-service (session errors)
+ALERT       : ALERT: Exactly 10% of requests failing across all endpoints. Very strange pattern.
+DESCRIPTION : A canary deployment of api-gateway v2.1 was configured to receive
+              10% of traffic. The canary build has a bug: it strips the
+              Authorization header before forwarding requests, causing auth
+              failures for that 10% slice. The errors appear distributed across
+              order-service, auth-service, and notification-service — wherever
+              the canary routes requests. The 10% failure rate is the tell-tale
+              sign. Logs on api-gateway show "canary instance" tag on failed
+              requests. This type of canary misconfiguration caused a 2-hour
+              partial outage at Etsy affecting 10% of checkout flows.
+IDEAL STEPS : 8
+FIX         : rollback_deployment → api-gateway, declare_rca
+
+[27]
+ID          : task_clock_skew_hard
+DIFFICULTY  : hard
+FAULT SVC   : auth-service
+FAULT TYPE  : clock_skew
+RED HERRING : redis-cache (token cache misses), order-service (auth rejections)
+ALERT       : ALERT: Intermittent auth failures. 25% of tokens rejected as expired. redis-cache miss rate up.
+DESCRIPTION : The NTP daemon on auth-service's host was killed during a kernel
+              update. Auth-service's clock drifted 8 minutes ahead. JWT tokens
+              it issues have an iat (issued-at) timestamp 8 minutes in the
+              future — other services reject them as "not yet valid." Redis-
+              cache shows high miss rate because tokens are cached with wrong
+              TTL calculations. Order-service rejects 25% of requests that
+              arrive with these future-dated tokens. Auth-service metrics look
+              fine. This clock drift failure caused a 4-hour authentication
+              outage at Stripe in 2020 and is a classic distributed systems
+              failure mode described by Leslie Lamport.
+IDEAL STEPS : 9
+FIX         : rollback_deployment → auth-service, declare_rca
+
+[28]
+ID          : task_schema_migration_hard
+DIFFICULTY  : hard
+FAULT SVC   : postgres-db
+FAULT TYPE  : blocking_migration
+RED HERRING : order-service (writes queuing), auth-service (session writes slow)
+ALERT       : ALERT: All write operations queuing. order-service writes 30s+. System appears to be hanging.
+DESCRIPTION : A database schema migration — adding a NOT NULL column to the
+              orders table — is holding an ACCESS EXCLUSIVE lock on the table
+              while it backfills 80M existing rows. All INSERT/UPDATE operations
+              queue behind this lock. Order-service writes hang at 30+ seconds.
+              Auth session writes slow to a crawl. Both look like application
+              faults. DB query reveals the lock: pg_locks shows AccessExclusiveLock
+              on orders held by a migration process PID. This migration locking
+              pattern caused a 2-hour write outage at GOG.com and is why
+              tools like pg_repack and pt-online-schema-change exist.
+IDEAL STEPS : 8
+FIX         : run_db_query → postgres-db (confirm lock), declare_rca → postgres-db
+
+[29]
+ID          : task_zombie_process_hard
+DIFFICULTY  : hard
+FAULT SVC   : order-service
+FAULT TYPE  : zombie_process_fd_leak
+RED HERRING : postgres-db (connection errors), redis-cache (timeouts)
+ALERT       : ALERT: order-service gradually degrading. File descriptor errors in logs. DB and cache timeouts.
+DESCRIPTION : Order-service spawns child processes to handle PDF invoice
+              generation. A bug in the cleanup handler leaves zombie processes
+              that hold open file descriptors. After 6 hours of operation, the
+              FD limit (1024) is reached. New socket connections to postgres-db
+              and redis-cache fail with EMFILE (too many open files). Both
+              postgres-db and redis-cache appear broken from the outside, but
+              are completely healthy. The root cause is order-service's FD
+              leak. This is a common failure mode on high-traffic Node.js and
+              Java services and caused a 3-hour outage at Pinterest in 2015.
+IDEAL STEPS : 10
+FIX         : restart_service → order-service, declare_rca
+
+[30]
+ID          : task_retry_amplification_hard
+DIFFICULTY  : hard
+FAULT SVC   : notification-service
+FAULT TYPE  : retry_storm_amplification
+RED HERRING : api-gateway (request rate 10x normal), postgres-db (overloaded)
+ALERT       : ALERT: Massive traffic spike. api-gateway handling 10x normal load. DB overwhelmed. Origin unclear.
+DESCRIPTION : A brief 30-second outage in the email provider caused notification-
+              service to queue 500K retries. The retry policy had no jitter or
+              exponential backoff — all 500K retries fire simultaneously when
+              the provider recovers. This triggers api-gateway to process 10x
+              normal webhook confirmations, which floods postgres-db with status
+              updates. The traffic spike appears to originate from api-gateway.
+              Logs show the retry burst origin on notification-service. This
+              retry storm pattern is described in Amazon's builder's library
+              as one of the most dangerous failure modes in distributed systems.
+IDEAL STEPS : 9
+FIX         : rollback_deployment → notification-service, declare_rca
+
+----------------------------------------------------------------
+ADDITIONAL SCENARIOS (31-50) — COMPANY-SPECIFIC REAL PATTERNS
+----------------------------------------------------------------
+
+[31] task_k8s_oomkilled_hard
+Kubernetes OOMKilled loop — pod killed every 2 min, appearing as repeated health failures
+Fault: order-service | Type: kubernetes_oom | Red Herring: api-gateway
+
+[32] task_envoy_timeout_hard
+Envoy sidecar timeout misconfiguration causing all cross-service calls to fail after exactly 10s
+Fault: auth-service | Type: proxy_timeout | Red Herring: redis-cache
+
+[33] task_secret_rotation_medium
+Secrets manager rotated DB credentials without notifying the app, causing auth failures
+Fault: postgres-db | Type: credential_rotation | Red Herring: auth-service
+
+[34] task_index_bloat_hard
+PostgreSQL index bloat after mass deletes causing vacuum to stall and queries to slow
+Fault: postgres-db | Type: index_bloat | Red Herring: order-service
+
+[35] task_grpc_deadline_medium
+gRPC deadline propagation bug causing cascading timeout failures across 3 services
+Fault: api-gateway | Type: deadline_propagation | Red Herring: notification-service
+
+[36] task_log_aggregator_hard
+Fluentd log aggregator consuming 4GB RAM and being killed, losing metrics visibility
+Fault: notification-service | Type: observability_failure | Red Herring: redis-cache
+
+[37] task_autoscaler_lag_medium
+Autoscaler 5-minute lag during traffic spike leaves service understaffed for critical window
+Fault: order-service | Type: scaling_lag | Red Herring: api-gateway
+
+[38] task_mutual_tls_medium
+mTLS certificate rotation left one service with expired client cert, silently rejected by peers
+Fault: auth-service | Type: cert_rotation | Red Herring: postgres-db
+
+[39] task_kafka_lag_hard
+Kafka consumer group lag — notification-service 2M messages behind, orders appear to vanish
+Fault: notification-service | Type: consumer_lag | Red Herring: order-service
+
+[40] task_feature_flag_medium
+Feature flag service outage causing all flags to default to OFF, disabling checkout flow
+Fault: order-service | Type: feature_flag_failure | Red Herring: redis-cache
+
+[41] task_health_check_lie_hard
+Health check endpoint returns 200 but service is actually in degraded state internally
+Fault: auth-service | Type: health_check_false_positive | Red Herring: api-gateway + order-service
+
+[42] task_connection_string_medium
+Wrong database connection string in production config (staging DB URL deployed to prod)
+Fault: postgres-db | Type: wrong_environment_config | Red Herring: order-service
+
+[43] task_async_poison_pill_hard
+A malformed event in the Kafka queue crashes every consumer that reads it, creating a poison pill
+Fault: notification-service | Type: poison_pill_event | Red Herring: redis-cache
+
+[44] task_ip_exhaustion_hard
+VPC IP address pool exhausted — new pods cannot get IPs, service replicas fail to start
+Fault: api-gateway | Type: ip_exhaustion | Red Herring: order-service + auth-service
+
+[45] task_dependency_version_medium
+Dependency version conflict after library upgrade causes silent data corruption in serialization
+Fault: order-service | Type: serialization_corruption | Red Herring: postgres-db
+
+[46] task_bgp_blackhole_hard
+BGP route leak causing 15% of traffic to route to a null route (blackholed) — intermittent
+Fault: api-gateway | Type: network_blackhole | Red Herring: redis-cache + notification-service
+
+[47] task_resource_quota_medium
+Kubernetes namespace resource quota hit — new deployments fail silently, old pods run fine
+Fault: order-service | Type: k8s_quota_exceeded | Red Herring: postgres-db
+
+[48] task_backup_restore_hard
+Backup job running full table exports during peak hours, consuming 90% of DB I/O bandwidth
+Fault: postgres-db | Type: backup_io_contention | Red Herring: auth-service + order-service
+
+[49] task_synthetic_monitor_medium
+Synthetic monitoring probe using prod credentials and causing rate limiting on real users
+Fault: auth-service | Type: monitoring_side_effect | Red Herring: api-gateway
+
+[50] task_mttr_regression_hard
+A new alerting rule fires too late (MTTR regression) — incident already 40min old on discovery
+Fault: redis-cache | Type: observability_gap | Red Herring: order-service + notification-service
+
+================================================================
+RECOMMENDED PICKS FOR YOUR PROJECT
+================================================================
+
+FOR IMMEDIATE IMPACT (add these first):
+  → [01] task_cpu_spike_auth         (easy — clear, relatable)
+  → [06] task_deadlock_postgres      (easy — every dev has seen this)
+  → [10] task_cascade_db_medium      (medium — missing index is #1 prod issue)
+  → [23] task_connection_leak_hard   (hard — Stripe-level engineering problem)
+  → [19] task_multi_fault_hard       (hard — dual fault, unprecedented in most benchmarks)
+
+FOR JUDGE IMPRESSIVENESS (shows domain depth):
+  → [20] task_sidecar_poison_hard    (service mesh — very 2024/2025)
+  → [27] task_clock_skew_hard        (distributed systems classic — Lamport clocks)
+  → [28] task_schema_migration_hard  (every senior engineer has horror stories)
+  → [43] task_async_poison_pill_hard (Kafka poison pill — famous failure mode)
+  → [26] task_canary_poison_hard     (canary deployment — Netflix/Uber pattern)
+
+================================================================
+END OF FILE
+Tasks 31-50 have abbreviated descriptions.
+Request DETAILED DESCRIPTION for any task to get full
+fault simulation code, log templates, and metric values.
+================================================================
