@@ -1,4 +1,5 @@
 import gradio as gr
+from gradio.themes import Base
 
 custom_css = """
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;700&family=Share+Tech+Mono&display=swap');
@@ -156,7 +157,7 @@ input:focus, select:focus, textarea:focus {
 
 def create_dashboard():
     # We use a base theme then heavily override it via CSS to achieve the Bloomberg terminal look.
-    with gr.Blocks(title="Incident Response Env", css=custom_css, theme=gr.themes.Base()) as demo:
+    with gr.Blocks(title="Incident Response Env", css=custom_css, theme=Base()) as demo:
         
         with gr.Row():
             gr.HTML("""

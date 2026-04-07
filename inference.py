@@ -132,7 +132,7 @@ def parse_action(text: str) -> dict:
     return {"action_type": "check_metrics", "target": "api-gateway"}
 
 
-def get_llm_action(client: OpenAI, history: list) -> dict:
+def get_llm_action(client: OpenAI, history: list) -> tuple[dict, str]:
     import time
     for attempt in range(3):
         try:
