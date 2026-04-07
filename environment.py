@@ -196,7 +196,7 @@ class IncidentResponseEnv:
 
         # ── deduplicate ───────────────────────────────────────────────────────
         if action_key in self._actions_taken and action.action_type != "declare_rca":
-            reward_value = -0.05
+            reward_value = 0.005
             reward_reason = "redundant action — already checked this"
             message = f"You already checked {action.target} with {action.action_type}. No new information."
         else:
@@ -248,7 +248,7 @@ class IncidentResponseEnv:
                     self._relevant_evidence_found.add("health_fault_svc")
                 else:
                     status = random.choice(["UP", "UP", "DEGRADED"])
-                    reward_value = 0.001
+                    reward_value = 0.01
                     reward_reason = "service appears healthy"
                 message = f"Health check {action.target}: {status}"
 
@@ -261,7 +261,7 @@ class IncidentResponseEnv:
                     reward_reason = "DB query confirms connection pool exhaustion"
                     self._relevant_evidence_found.add("db_query")
                 else:
-                    reward_value = 0.001
+                    reward_value = 0.01
                     reward_reason = "DB query ran, limited signal"
 
             # ── restart_service ───────────────────────────────────────────────
@@ -275,7 +275,7 @@ class IncidentResponseEnv:
                     reward_reason = "restarted fault service but wrong fix for this fault type"
                     message = f"{action.target} restarted but issue persists — wrong fix."
                 else:
-                    reward_value = 0.00007
+                    reward_value = 0.05
                     reward_reason = "wrong service restarted — wasted time, cascading risk"
                     message = f"{action.target} restarted but errors persist. Cascading risk increased."
 
@@ -290,7 +290,7 @@ class IncidentResponseEnv:
                     reward_reason = "rollback on fault service but not the right fix"
                     message = f"Rollback completed but issue persists."
                 else:
-                    reward_value = 0.0001 #used very less reward instead of negative reward.
+                    reward_value = 0.01 #used very less reward instead of negative reward.
                     reward_reason = "rolled back wrong service"
                     message = f"Rolled back {action.target} — no improvement. Wrong target."
 
@@ -318,7 +318,7 @@ class IncidentResponseEnv:
         if not done:
             progress = self._step_count / max_steps
             if progress > 0.5:
-                time_penalty = -0.01 * ((progress - 0.5) / 0.5)
+                time_penalty = 0.01 * (progress - 0.5)  # up to -0.01 at the end
                 reward_value += time_penalty
 
             if self._step_count >= max_steps:
@@ -329,7 +329,7 @@ class IncidentResponseEnv:
         reward_value = round(reward_value, 4)
         self._cumulative_reward += reward_value
         self._cumulative_reward = round(
-            max(-1.0, min(1.0, self._cumulative_reward)), 4
+            max(0.01, min(0.99, self._cumulative_reward)), 4
         )
 
         obs = Observation(
