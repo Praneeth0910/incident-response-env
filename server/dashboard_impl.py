@@ -6,7 +6,6 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 import gradio as gr
-from gradio.themes import Base
 
 from benchmark_runner import (
     BENCHMARK_FILE,
@@ -974,12 +973,16 @@ def create_dashboard(env_instance: Optional[IncidentResponseEnv] = None):
         latest_run = store.get("latest_run")
         log_text = "\n".join(latest_run.get("log_lines", [])) if latest_run else ""
         return (
+            store,
             _render_stats_cards(store),
             _render_benchmark_status(latest_run),
             _render_benchmark_summary(latest_run),
             _benchmark_rows(store),
             store,
             log_text,
+            _render_podium(store),
+            _benchmark_rows(store),
+            _filter_log_text(store),
         )
 
     def execute_benchmark_run(
@@ -998,47 +1001,58 @@ def create_dashboard(env_instance: Optional[IncidentResponseEnv] = None):
             )
             store = load_benchmark_store(BENCHMARK_FILE)
             return (
+                store,
                 _render_stats_cards(store),
                 _render_benchmark_status(report),
                 _render_benchmark_summary(report),
                 _benchmark_rows(store),
                 store,
                 "\n".join(report.get("log_lines", [])),
+                _render_podium(store),
+                _benchmark_rows(store),
+                _filter_log_text(store),
             )
         except Exception as exc:
             store = load_benchmark_store(BENCHMARK_FILE)
             latest_run = store.get("latest_run")
             log_text = "\n".join(latest_run.get("log_lines", [])) if latest_run else ""
             return (
+                store,
                 _render_stats_cards(store),
                 _render_benchmark_status(error=str(exc)),
                 _render_benchmark_summary(latest_run),
                 _benchmark_rows(store),
                 store,
                 log_text,
+                _render_podium(store),
+                _benchmark_rows(store),
+                _filter_log_text(store),
             )
 
-    with gr.Blocks(title="Incident Response Env", css=custom_css, theme=Base()) as demo:
-        gr.HTML(
-            """
-            <div class="hero-shell">
-            <pre>
-INCIDENT RESPONSE ENV
-RL BENCHMARK / OPERATIONS WAR ROOM / v1.0
-            </pre>
-            </div>
-            """
-        )
+    def quick_reset(task_id: str):
+        return (task_id, *reset_task(task_id, _fresh_ui_state(task_id)))
+
+    def filter_logs(store: Dict[str, Any], level: str, query: str):
+        return _filter_log_text(store, level, query)
+
+    with gr.Blocks(title="Incident Response Env") as demo:
+        gr.HTML(f"<style>{custom_css}</style>")
+        gr.HTML(_render_header_bar())
 
         stats_html = gr.HTML(_render_stats_cards(initial_store))
         ui_state = gr.State(initial_state)
+        benchmark_store_state = gr.State(initial_store)
 
         with gr.Tabs():
-            with gr.TabItem("Run Episode"):
+            with gr.TabItem("/dashboard"):
                 with gr.Row():
                     with gr.Column(scale=1):
-                        task_dropdown = gr.Dropdown(choices=list(TASKS.keys()), value="task_easy", label="Task")
-                        reset_btn = gr.Button("Reset Task", variant="primary")
+                        status_html = gr.HTML(_render_status_panel(initial_state))
+                        task_dropdown = gr.Dropdown(choices=list(TASKS.keys()), value="task_easy", label="Task Select")
+                        with gr.Row():
+                            btn_easy = gr.Button("Run Easy", variant="primary")
+                            btn_medium = gr.Button("Run Medium")
+                            btn_hard = gr.Button("Run Hard")
                         action_dropdown = gr.Dropdown(
                             choices=[
                                 "read_logs",
@@ -1053,81 +1067,53 @@ RL BENCHMARK / OPERATIONS WAR ROOM / v1.0
                             label="Action",
                         )
                         target_dropdown = gr.Dropdown(choices=SERVICES, value=SERVICES[0], label="Target")
-                        act_btn = gr.Button("Execute Action", variant="primary")
-                        refresh_btn = gr.Button("Refresh View")
+                        with gr.Row():
+                            act_btn = gr.Button("Execute Action", variant="primary")
+                            reset_btn = gr.Button("Reset Task")
+                        with gr.Row():
+                            refresh_btn = gr.Button("Refresh View")
+                            grade_btn = gr.Button("Grade")
                     with gr.Column(scale=2):
-                        alert_html = gr.HTML(_render_alert(""))
-                        status_html = gr.HTML(_render_status_panel(initial_state))
-                        live_score_html = gr.HTML(_render_score_panel(0.001, "Live Score"))
+                        gr.HTML(
+                            """
+                            <div class="hero-shell">
+                            <pre>
+ ██╗███╗   ██╗ ██████╗██╗██████╗ ███████╗███╗   ██╗████████╗
+ ██║████╗  ██║██╔════╝██║██╔══██╗██╔════╝████╗  ██║╚══██╔══╝
+ ██║██╔██╗ ██║██║     ██║██║  ██║█████╗  ██╔██╗ ██║   ██║
+ ██║██║╚██╗██║██║     ██║██║  ██║██╔══╝  ██║╚██╗██║   ██║
+ ██║██║ ╚████║╚██████╗██║██████╔╝███████╗██║ ╚████║   ██║
+ ╚═╝╚═╝  ╚═══╝ ╚═════╝╚═╝╚═════╝ ╚══════╝╚═╝  ╚═══╝   ╚═╝
+       RESPONSE  ENVIRONMENT  ▸  RL  BENCHMARK  v1.0
+                            </pre>
+                            <div class="hero-copy">
+                              Mission control for manual incident runs. Investigate, avoid red herrings,
+                              and declare RCA only when the signal is real.
+                            </div>
+                            </div>
+                            """
+                        )
+                        dashboard_alert_html = gr.HTML(_render_alert(""))
                         observation_box = gr.Textbox(
                             value=initial_state["last_message"],
-                            label="Observation",
+                            label="Mission Feed",
                             lines=8,
                             interactive=False,
                         )
                         terminal_box = gr.Textbox(
                             value="\n".join(initial_state["terminal_log"]),
-                            label="Run Log",
-                            lines=10,
+                            label="Operations Log",
+                            lines=12,
                             interactive=False,
                         )
 
-            with gr.TabItem("History"):
-                gr.Markdown(
-                    "Step-by-step record of the current episode. Rewards are tagged as "
-                    "`POSITIVE`, `CAUTION`, or `NEGATIVE` so you can scan the run quickly."
-                )
-                history_table = gr.Dataframe(
-                    headers=["Step", "Feedback", "Reward", "Action", "Target", "Reason", "Done"],
-                    value=_history_rows(initial_state),
-                    interactive=False,
-                    wrap=True,
-                )
-
-            with gr.TabItem("State Inspector"):
-                with gr.Row():
-                    refresh_state_btn = gr.Button("Refresh State", variant="primary")
-                    grade_btn = gr.Button("Get Grade")
-                inspector_score_html = gr.HTML(_render_score_panel(0.001, "Inspector Score"))
-                grade_text = gr.Textbox(value="0.0010", label="Current Grade", interactive=False)
-                state_json = gr.JSON(value=_inspector_state_json(env), label="Environment State")
-
-            with gr.TabItem("Quick Reference"):
-                gr.Markdown(
-                    f"""
-### Action Space
-
-| Action | Best Use |
-|---|---|
-| `read_logs` | Find concrete root-cause evidence |
-| `check_metrics` | Spot anomalies and red herrings |
-| `check_health` | Confirm whether a service is up, degraded, or down |
-| `run_db_query` | Confirm DB-side saturation symptoms |
-| `restart_service` | Best fix for `oom_crash` |
-| `rollback_deployment` | Best fix for `bad_deployment` |
-| `declare_rca` | End the task only when the faulty service is clear |
-
-### Strategy Guide
-
-1. Start with logs or metrics on the most suspicious service.
-2. Corroborate signals before applying a fix.
-3. Avoid duplicate actions. They cost reward and time.
-4. Declare RCA only after the service and fault pattern line up.
-
-### Benchmark Output
-
-- `benchmark.json` is written to `{BENCHMARK_FILE}` after every model benchmark run.
-- The dashboard stats and leaderboard read from that file, so a new run updates the UI automatically.
-                    """
-                )
-
-            with gr.TabItem("Benchmark Runner"):
+            with gr.TabItem("/benchmark"):
                 with gr.Row():
                     with gr.Column(scale=1):
-                        model_input = gr.Dropdown(choices=MODEL_CHOICES, value=MODEL_CHOICES[0], label="Model ID")
-                        api_base_input = gr.Textbox(value=DEFAULT_API_BASE, label="API Base URL")
+                        model_input = gr.Dropdown(choices=MODEL_CHOICES, value=MODEL_CHOICES[0], label="Model Config")
+                        api_base_input = gr.Textbox(value=DEFAULT_API_BASE, label="API Endpoint")
                         api_key_input = gr.Textbox(value="", label="API Key", type="password")
-                        env_base_input = gr.Textbox(value=DEFAULT_ENV_BASE, label="Environment Base URL")
+                        env_base_input = gr.Textbox(value=DEFAULT_ENV_BASE, label="Environment Base")
                         run_benchmark_btn = gr.Button("Execute Benchmark", variant="primary")
                         refresh_benchmark_btn = gr.Button("Reload benchmark.json")
                     with gr.Column(scale=2):
@@ -1142,31 +1128,89 @@ RL BENCHMARK / OPERATIONS WAR ROOM / v1.0
                         benchmark_json = gr.JSON(value=initial_store, label="benchmark.json")
                         benchmark_log = gr.Textbox(
                             value="\n".join((initial_store.get("latest_run") or {}).get("log_lines", [])),
-                            label="Benchmark Log",
-                            lines=14,
+                            label="Benchmark Stream",
+                            lines=12,
                             interactive=False,
                         )
 
+            with gr.TabItem("/live"):
+                live_alert_html = gr.HTML(_render_alert(""))
+                with gr.Row():
+                    with gr.Column(scale=2):
+                        timeline_html = gr.HTML(_render_episode_timeline(initial_state))
+                        history_table = gr.Dataframe(
+                            headers=["Step", "Feedback", "Reward", "Action", "Target", "Reason", "Done"],
+                            value=_history_rows(initial_state),
+                            interactive=False,
+                            wrap=True,
+                        )
+                    with gr.Column(scale=1):
+                        live_score_html = gr.HTML(_render_score_panel(0.001, "Cumulative Score Meter"))
+                        service_map_html = gr.HTML(_render_service_map(initial_state))
+
+            with gr.TabItem("/leaderboard"):
+                podium_html = gr.HTML(_render_podium(initial_store))
+                leaderboard_table = gr.Dataframe(
+                    headers=["Rank", "Model", "Easy", "Medium", "Hard", "Average", "Solved", "Updated"],
+                    value=_benchmark_rows(initial_store),
+                    interactive=False,
+                    wrap=True,
+                )
+
+            with gr.TabItem("/logs"):
+                with gr.Row():
+                    log_level = gr.Dropdown(
+                        choices=["ALL", "START", "STEP", "END", "DEBUG", "ERROR", "WARN", "FILE"],
+                        value="ALL",
+                        label="Log Level Filter",
+                    )
+                    log_query = gr.Textbox(label="Search", placeholder="Filter by model, task, or error text")
+                logs_viewer = gr.Textbox(
+                    value=_filter_log_text(initial_store),
+                    label="Raw Log Stream",
+                    lines=18,
+                    interactive=False,
+                )
+
+            with gr.TabItem("/help"):
+                gr.HTML(_render_help_terminal())
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        refresh_state_btn = gr.Button("Refresh State", variant="primary")
+                        inspector_grade_btn = gr.Button("Get Grade")
+                        grade_text = gr.Textbox(value="0.0010", label="Current Grade", interactive=False)
+                    with gr.Column(scale=2):
+                        state_json = gr.JSON(value=_inspector_state_json(env), label="State Inspector")
+
+        footer_html = gr.HTML(_render_footer_bar(initial_state))
+
         episode_outputs = [
             ui_state,
-            alert_html,
             status_html,
-            live_score_html,
+            dashboard_alert_html,
             observation_box,
             terminal_box,
+            live_alert_html,
+            timeline_html,
             history_table,
+            live_score_html,
+            service_map_html,
             state_json,
             grade_text,
-            inspector_score_html,
+            footer_html,
         ]
 
         benchmark_outputs = [
+            benchmark_store_state,
             stats_html,
             benchmark_status_html,
             benchmark_summary_html,
             benchmark_table,
             benchmark_json,
             benchmark_log,
+            podium_html,
+            leaderboard_table,
+            logs_viewer,
         ]
 
         action_dropdown.change(fn=_sync_target_choices, inputs=action_dropdown, outputs=target_dropdown)
@@ -1177,14 +1221,20 @@ RL BENCHMARK / OPERATIONS WAR ROOM / v1.0
             outputs=episode_outputs,
         )
         refresh_btn.click(fn=refresh_episode, inputs=ui_state, outputs=episode_outputs)
-        refresh_state_btn.click(fn=refresh_episode, inputs=ui_state, outputs=episode_outputs)
         grade_btn.click(fn=refresh_episode, inputs=ui_state, outputs=episode_outputs)
+        refresh_state_btn.click(fn=refresh_episode, inputs=ui_state, outputs=episode_outputs)
+        inspector_grade_btn.click(fn=refresh_episode, inputs=ui_state, outputs=episode_outputs)
+        btn_easy.click(fn=lambda: quick_reset("task_easy"), inputs=None, outputs=[task_dropdown] + episode_outputs)
+        btn_medium.click(fn=lambda: quick_reset("task_medium"), inputs=None, outputs=[task_dropdown] + episode_outputs)
+        btn_hard.click(fn=lambda: quick_reset("task_hard"), inputs=None, outputs=[task_dropdown] + episode_outputs)
         run_benchmark_btn.click(
             fn=execute_benchmark_run,
             inputs=[model_input, api_base_input, api_key_input, env_base_input],
             outputs=benchmark_outputs,
         )
         refresh_benchmark_btn.click(fn=refresh_benchmark_panels, outputs=benchmark_outputs)
+        log_level.change(fn=filter_logs, inputs=[benchmark_store_state, log_level, log_query], outputs=logs_viewer)
+        log_query.change(fn=filter_logs, inputs=[benchmark_store_state, log_level, log_query], outputs=logs_viewer)
         demo.load(fn=refresh_benchmark_panels, outputs=benchmark_outputs)
 
     return demo
