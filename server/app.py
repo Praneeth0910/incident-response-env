@@ -3,6 +3,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from models import Action, Observation, ResetRequest, StepResponse
 from environment import IncidentResponseEnv
+import gradio as gr
+from .dashboard import create_dashboard
 
 app = FastAPI(
     title="Incident Response Environment",
@@ -48,6 +50,11 @@ def step(action: Action):
         return StepResponse(observation=obs, reward=rew, done=done, info=info)
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+# Mount Gradio Dashboard
+demo = create_dashboard()
+app = gr.mount_gradio_app(app, demo, path="/frontend")
+
 
 
 @app.get("/state")
