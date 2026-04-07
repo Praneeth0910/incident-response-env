@@ -1,19 +1,38 @@
+# server/app.py
+#
+# Entry point: uvicorn server.app:app --host 0.0.0.0 --port 7860
+#
+# Root-level modules (environment.py, models.py) are importable because
+# uvicorn is launched from the project root, which puts "." on sys.path.
+# ─────────────────────────────────────────────────────────────────────────────
+
+import sys
+import os
+
+# Ensure project root is always on the path (handles edge cases in Docker)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from typing import Optional
+import traceback
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from models import Action, Observation, ResetRequest, StepResponse
-from environment import IncidentResponseEnv
 import gradio as gr
+
+# Root-level modules
+from models import Action, Observation, ResetRequest, StepResponse
+from environment import IncidentResponseEnv, TASKS
+
+# Gradio dashboard from sibling file in server/
 from .dashboard import create_dashboard
-from .routes import router
+
+# ── App ───────────────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="Incident Response Environment",
     description="OpenEnv-compliant production incident response RL environment.",
     version="1.0.0",
 )
-
-app.include_router(router, prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,
@@ -55,7 +74,7 @@ def step(action: Action):
         raise HTTPException(status_code=400, detail=str(e))
 
 # Mount Gradio Dashboard
-demo = create_dashboard(env)
+demo = create_dashboard()
 app = gr.mount_gradio_app(app, demo, path="/frontend")
 
 
