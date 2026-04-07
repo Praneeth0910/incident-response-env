@@ -3,9 +3,9 @@
 Incident Response Environment — Baseline Inference Script
 
 Mandatory environment variables:
-    API_BASE_URL   LLM endpoint (e.g. https://router.huggingface.co/v1)
+    API_BASE_URL   LLM proxy endpoint (injected by validator)
     MODEL_NAME     Model identifier (e.g. Qwen/Qwen2.5-72B-Instruct)
-    HF_TOKEN       HuggingFace / API key
+    API_KEY        LLM proxy key (injected by validator)
 """
 
 import json
@@ -16,10 +16,10 @@ from openai import OpenAI
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
+API_BASE_URL = os.getenv("API_BASE_URL")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "Qwen/Qwen2.5-72B-Instruct")
-HF_TOKEN     = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY")
-ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:8000")
+API_KEY      = os.getenv("API_KEY")
+ENV_BASE_URL = os.getenv("ENV_BASE_URL", "http://localhost:7860")
 BENCHMARK    = "incident-response-env"
 
 TASKS = ["task_easy", "task_medium", "task_hard"]
@@ -249,11 +249,11 @@ def run_episode(client: OpenAI, task_id: str) -> dict:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    if not HF_TOKEN:
-        print("ERROR: HF_TOKEN or OPENAI_API_KEY environment variable not set.", file=sys.stderr)
+    if not API_KEY:
+        print("ERROR: API_KEY environment variable not set (should be injected by LiteLLM proxy).", file=sys.stderr)
         sys.exit(1)
 
-    client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
 
     results = []
     for task_id in TASKS:
@@ -277,4 +277,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-#submitted to Scalar X Huggingface X PyTorch X Meta hackathon
