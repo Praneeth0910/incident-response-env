@@ -5,12 +5,15 @@ from models import Action, Observation, ResetRequest, StepResponse
 from environment import IncidentResponseEnv
 import gradio as gr
 from .dashboard import create_dashboard
+from .routes import router
 
 app = FastAPI(
     title="Incident Response Environment",
     description="OpenEnv-compliant production incident response RL environment.",
     version="1.0.0",
 )
+
+app.include_router(router, prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,
