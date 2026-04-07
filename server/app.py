@@ -52,7 +52,7 @@ def step(action: Action):
         raise HTTPException(status_code=400, detail=str(e))
 
 # Mount Gradio Dashboard
-demo = create_dashboard()
+demo = create_dashboard(env)
 app = gr.mount_gradio_app(app, demo, path="/frontend")
 
 

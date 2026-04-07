@@ -96,5 +96,7 @@ docker run -p 7860:7860 incident-env
 export HF_TOKEN=your_token
 export MODEL_NAME=Qwen/Qwen2.5-72B-Instruct
 export API_BASE_URL=https://router.huggingface.co/v1
-python Inference.py
+python inference.py
 ```
+
+Each benchmark run now writes or updates `benchmark.json` in the repo root, and the dashboard reads that file for leaderboard and summary stats.
