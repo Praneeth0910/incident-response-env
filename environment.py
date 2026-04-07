@@ -186,7 +186,7 @@ class IncidentResponseEnv:
         fault_type = task["fault_type"]
         max_steps = task["max_steps"]
 
-        reward_value = 0.0
+        reward_value = 0.001
         reward_reason = "no signal"
         message = ""
         metrics = None
@@ -318,8 +318,9 @@ class IncidentResponseEnv:
         if not done:
             progress = self._step_count / max_steps
             if progress > 0.5:
-                time_penalty = 0.01 * (progress - 0.5)  # up to -0.01 at the end
-                reward_value += time_penalty
+                scale = 0.99 - 0.5 * ((progress - 0.5) / 0.5)
+                reward_value = round(reward_value * scale, 4)
+                reward_value = max(0.01, reward_value) 
 
             if self._step_count >= max_steps:
                 done = True
@@ -368,9 +369,9 @@ class IncidentResponseEnv:
     # ── grader ────────────────────────────────────────────────────────────────
 
     def grade(self) -> float:
-        """Deterministic grader — returns float in [0.0, 1.0]."""
+        """Deterministic grader — returns float in (0.0, 1.0)."""
         if not self._done:
             return 0.001
-        raw = max(0.0, min(1.0, self._cumulative_reward))  # shift to [0.0, 1.0]
-        score = max(0.001, min(0.999, raw))
+        raw = max(0.01, min(0.99, self._cumulative_reward))  # shift to (0.0, 1.0)
+        score = max(0.01, min(0.99, raw))
         return round(score, 4)
