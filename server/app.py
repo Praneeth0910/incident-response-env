@@ -123,3 +123,16 @@ except Exception as _mount_err:
     print(f"[WARN] Dashboard could not be mounted: {_mount_err}", flush=True)
     traceback.print_exc()
     app = _app
+
+
+# ── Entry point for command-line and deployment ───────────────────────────────
+def main():
+    """Main entry point for uvicorn and setuptools scripts."""
+    import uvicorn
+    port = int(os.getenv("PORT", "7860"))
+    host = os.getenv("HOST", "0.0.0.0")
+    uvicorn.run(app, host=host, port=port, log_level="info")
+
+
+if __name__ == "__main__":
+    main()
