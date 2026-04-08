@@ -6,7 +6,7 @@ colorTo: blue
 sdk: docker
 pinned: false
 license: apache-2.0
-short_description: RL benchmark where LLM agents act as on-call SREs diagnosing production incidents
+short_description: LLM agents act as on-call SREs.
 ---
 <div align="center">
 
