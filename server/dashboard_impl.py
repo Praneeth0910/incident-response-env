@@ -872,9 +872,31 @@ def create_dashboard(env_instance: Optional[IncidentResponseEnv] = None) -> gr.B
             # ─── /benchmark ─────────────────────────────────────────────────
             with gr.TabItem("/benchmark"):
                 gr.Markdown("### Run a Model Benchmark")
-                bench_model_dd = gr.Dropdown(choices=MODEL_CHOICES, value=MODEL_CHOICES[0], label="Model")
-                bench_api_inp  = gr.Textbox(value=DEFAULT_API_BASE, label="API Base URL")
-                bench_btn      = gr.Button("RUN BENCHMARK (inference.py)", variant="primary")
+                
+                with gr.Group():
+                    gr.Markdown("#### Preset Models")
+                    with gr.Row():
+                        bench_model_dd = gr.Dropdown(choices=MODEL_CHOICES, value=MODEL_CHOICES[0], label="Model")
+                        bench_api_inp  = gr.Textbox(value=DEFAULT_API_BASE, label="API Base URL")
+                    bench_btn = gr.Button("RUN PRESET BENCHMARK", variant="primary")
+                
+                with gr.Group():
+                    gr.Markdown("#### Custom Model (Use Your Own LLM)")
+                    custom_model_name = gr.Textbox(
+                        placeholder="e.g., my-custom-model or custom/gpt-4-turbo",
+                        label="Custom Model Name",
+                        value=""
+                    )
+                    custom_api_base = gr.Textbox(
+                        value="https://api.openai.com/v1",
+                        label="API Base URL",
+                    )
+                    custom_api_key = gr.Textbox(
+                        label="API Key",
+                        type="password",
+                        placeholder="Your API key (not stored)"
+                    )
+                    custom_bench_btn = gr.Button("RUN CUSTOM BENCHMARK", variant="secondary")
 
                 bench_status_html  = gr.HTML(_render_benchmark_status())
                 bench_summary_html = gr.HTML(_render_benchmark_summary(None))
@@ -1038,6 +1060,55 @@ def create_dashboard(env_instance: Optional[IncidentResponseEnv] = None) -> gr.B
         bench_btn.click(
             fn=run_benchmark_ui,
             inputs=[bench_model_dd, bench_api_inp],
+            outputs=[bench_status_html, bench_log_box],
+        )
+
+        # Custom benchmark runner
+        def run_custom_benchmark_ui(model_name: str, api_base: str, api_key: str):
+            import subprocess, os
+            if not model_name or not api_base or not api_key:
+                return (
+                    _render_benchmark_status(error="Please provide Model Name, API Base URL, and API Key"),
+                    "[ERROR] Missing required fields: Model Name, API Base URL, or API Key",
+                )
+            env_vars = {**os.environ, "MODEL_NAME": model_name, "API_BASE_URL": api_base, "API_KEY": api_key}
+            log_lines = [f"[START] custom_model={model_name} api_base={api_base}"]
+            try:
+                proc = subprocess.run(
+                    ["python", str(_root / "inference.py")],
+                    capture_output=True, text=True, timeout=300, env=env_vars,
+                )
+                log_lines += proc.stdout.splitlines()
+                if proc.stderr:
+                    log_lines += [f"[STDERR] {l}" for l in proc.stderr.splitlines()]
+                if proc.returncode != 0:
+                    return (
+                        _render_benchmark_status(error=f"Exit code {proc.returncode}"),
+                        "\n".join(log_lines),
+                    )
+                # Try to parse scores from log lines and save
+                task_scores = {}
+                for line in log_lines:
+                    for tid in ["task_easy", "task_medium", "task_hard"]:
+                        if tid in line and "score=" in line:
+                            try:
+                                score = float(line.split("score=")[1].split()[0])
+                                task_scores[tid] = score
+                            except Exception:
+                                pass
+                store = load_benchmark_store(BENCHMARK_FILE)
+                store = record_run(store, model_name, task_scores, api_base, log_lines)
+                save_benchmark_store(BENCHMARK_FILE, store)
+                latest = store.get("latest_run")
+                return _render_benchmark_status(latest), "\n".join(log_lines)
+            except subprocess.TimeoutExpired:
+                return _render_benchmark_status(error="Timeout after 300s"), "\n".join(log_lines)
+            except Exception as exc:
+                return _render_benchmark_status(error=str(exc)), "\n".join(log_lines)
+
+        custom_bench_btn.click(
+            fn=run_custom_benchmark_ui,
+            inputs=[custom_model_name, custom_api_base, custom_api_key],
             outputs=[bench_status_html, bench_log_box],
         )
 
