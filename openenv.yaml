@@ -52,7 +52,7 @@ action_space:
 
 tasks:
   - id: task_easy
-    name: "OOM crash — single service"
+    name: "OOM crash on notification-service"
     difficulty: easy
     max_steps: 10
     description: >
@@ -60,7 +60,7 @@ tasks:
       Symptoms visible in logs within 2-3 targeted actions.
 
   - id: task_medium
-    name: "Cascading failure from bad deployment"
+    name: "Bad deployment cascading failure"
     difficulty: medium
     max_steps: 15
     description: >
@@ -69,7 +69,7 @@ tasks:
       Requires correlating deployment events across 3 services.
 
   - id: task_hard
-    name: "Redis connection pool exhaustion with red herring"
+    name: "Redis pool exhaustion + CPU red herring"
     difficulty: hard
     max_steps: 20
     description: >
@@ -78,12 +78,16 @@ tasks:
       Requires DB query to confirm pool exhaustion and resist the distraction.
 
 reward:
-  range: [-1.0, 1.0]
+  range: (0.01, 0.99)
   dense: true
   description: >
-    Per-step partial rewards for relevant evidence gathering (+0.05 to +0.12),
-    penalties for redundant reads (-0.05) and wrong interventions (-0.20),
-    time decay after 50% of steps used, bonus for fast correct RCA declaration.
+    +0.05 to +0.12 for relevant evidence found;
+    +0.005 for redundant action;
+    +0.30 for correct intervention (restart/rollback);
+    +0.05 for wrong service restarted, +0.01 for wrong service rolled back;
+    +0.50 + time bonus + evidence bonus for correct RCA;
+    +0.001 for wrong RCA;
+    cumulative strictly clamped to [0.01, 0.99].
 
 endpoints:
   reset: /reset
