@@ -1,107 +1,122 @@
-# server/app.py
-#
-# Entry point: uvicorn server.app:app --host 0.0.0.0 --port 7860
-#
-# Root-level modules (environment.py, models.py) are importable because
-# uvicorn is launched from the project root, which puts "." on sys.path.
-# ─────────────────────────────────────────────────────────────────────────────
+"""
+server/app.py
+=============
+FastAPI application — OpenEnv-compliant REST API + Gradio dashboard.
 
+Endpoints
+---------
+GET  /health     → health check
+POST /reset      → start episode
+POST /step       → take action
+GET  /state      → ground truth state (debug)
+GET  /grade      → episode score  { "score": float }
+GET  /tasks      → list tasks
+
+The Gradio dashboard is mounted at /dashboard via gr.mount_gradio_app.
+Root / redirects to /dashboard/.
+"""
+from __future__ import annotations
+
+import sys
 import os
-from typing import Optional
 import traceback
 
+# Ensure project root is on path so imports work locally and in Docker
+_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _root not in sys.path:
+    sys.path.insert(0, _root)
+
 from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 import gradio as gr
 
-# Root-level modules
-from models import Action, Observation, ResetRequest, StepResponse
 from environment import IncidentResponseEnv, TASKS
+from models import Action, ResetRequest, StepResponse
 
-# Gradio dashboard from sibling file in server/
-from .dashboard_impl import create_dashboard
-
-# ── App ───────────────────────────────────────────────────────────────────────
-
-app = FastAPI(
-    title="Incident Response Environment",
-    description="OpenEnv-compliant production incident response RL environment.",
+# ── FastAPI core app ──────────────────────────────────────────────────────────
+_app = FastAPI(
+    title="Incident Response RL Environment",
+    description="OpenEnv-compliant RL benchmark for LLM SRE incident response.",
     version="1.0.0",
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-env = IncidentResponseEnv()
+# Single shared env instance (one episode at a time)
+_env: IncidentResponseEnv = IncidentResponseEnv()
 
 
-@app.get("/")
-def root():
-    return {
-        "status": "ok", 
-        "message": "Incident Response Environment is running. Use /docs for API documentation."
-    }
+@_app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse(url="/dashboard/")
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok", "env": "incident-response-env", "version": "1.0.0"}
+@_app.get("/health")
+async def health():
+    return {"status": "ok", "version": "1.0.0"}
 
 
-@app.post("/reset", response_model=Observation)
-def reset(request: Optional[ResetRequest] = None):
-    if request is None:
-        request = ResetRequest()
-    obs = env.reset(task_id=request.task_id, seed=request.seed)
-    return obs
-
-
-@app.post("/step", response_model=StepResponse)
-def step(action: Action):
+@_app.post("/reset")
+async def reset(body: ResetRequest):
+    global _env
     try:
-        obs, rew, done, info = env.step(action)
-        return StepResponse(observation=obs, reward=rew, done=done, info=info)
-    except RuntimeError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-# Mount Gradio Dashboard
-demo = create_dashboard()
-app = gr.mount_gradio_app(app, demo, path="/frontend")
-
+        _env = IncidentResponseEnv()
+        obs = _env.reset(task_id=body.task_id, seed=body.seed)
+        return obs.model_dump()
+    except KeyError:
+        raise HTTPException(status_code=400, detail=f"Unknown task_id: {body.task_id}")
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
-@app.get("/state")
-def state():
-    return env.state()
+@_app.post("/step")
+async def step(action: Action):
+    try:
+        obs, reward, done, info = _env.step(action)
+        return StepResponse(observation=obs, reward=reward, done=done, info=info).model_dump()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
-@app.get("/grade")
-def grade():
-    score = env.grade()
-    score = max(0.001, min(0.999, score))  # double safety
-    return {"score": round(score, 4)}
+@_app.get("/state")
+async def state():
+    try:
+        return _env.state()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
-@app.get("/tasks")
-def tasks():
-    from environment import TASKS
+@_app.get("/grade")
+async def grade():
+    try:
+        return {"score": _env.grade()}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@_app.get("/tasks")
+async def tasks():
     return {
-        tid: {
-            "name": t["name"],
-            "difficulty": t["difficulty"],
-            "max_steps": t["max_steps"],
-            "description": t["description"],
-        }
-        for tid, t in TASKS.items()
+        "tasks": [
+            {
+                "id": tid,
+                "name": meta["name"],
+                "difficulty": meta["difficulty"],
+                "max_steps": meta["max_steps"],
+                "description": meta["description"],
+            }
+            for tid, meta in TASKS.items()
+        ]
     }
 
-def main():
-    import uvicorn
-    uvicorn.run("server.app:app", host="0.0.0.0", port=8000)
 
-if __name__ == "__main__":
-    main()
+# ── Mount Gradio dashboard ────────────────────────────────────────────────────
+try:
+    from server.dashboard_impl import create_dashboard
+    _gradio_ui = create_dashboard(_env)
+    app = gr.mount_gradio_app(_app, _gradio_ui, path="/dashboard")
+    print("[INFO] Gradio dashboard mounted at /dashboard", flush=True)
+except Exception as _mount_err:
+    print(f"[WARN] Dashboard could not be mounted: {_mount_err}", flush=True)
+    traceback.print_exc()
+    app = _app
