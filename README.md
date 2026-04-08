@@ -53,7 +53,7 @@ root cause as fast as possible. This environment simulates that exact task.
 ## Reward function
 
 - `+0.05` to `+0.12` — relevant evidence found
-- `-0.005` — redundant action (already checked)
+- `+0.005` — redundant action (already checked)
 - `+0.30` — correct intervention (restart/rollback)
 - `+0.05` — wrong service restarted 
 - `+0.01` — wrong service rolled back
