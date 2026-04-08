@@ -29,6 +29,10 @@ MODEL_NAME   = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
 # Port 7860 matches the Docker CMD / uvicorn --port 7860
 ENV_BASE_URL = os.environ.get("ENV_BASE_URL", "http://localhost:7860")
 
+# Validate that we have API credentials
+if not API_KEY or API_KEY.strip() == "":
+    print("[WARNING] API_KEY is empty. Evaluator may not be injecting credentials.", flush=True)
+
 BENCHMARK = "incident-response-env"
 TASKS     = ["task_easy", "task_medium", "task_hard"]
 
@@ -131,6 +135,14 @@ def parse_action(text: str) -> dict:
 def get_llm_action(client: OpenAI, history: list) -> tuple[dict, str]:
     for attempt in range(3):
         try:
+            print(
+                f"[TRACE] About to call LLM API (attempt {attempt+1}/3):",
+                flush=True,
+            )
+            print(f"        URL: {API_BASE_URL}", flush=True)
+            print(f"        Model: {MODEL_NAME}", flush=True)
+            print(f"        Using injected credentials: {bool(API_KEY)}", flush=True)
+            
             resp = client.chat.completions.create(
                 model=MODEL_NAME,
                 messages=history,
@@ -139,7 +151,7 @@ def get_llm_action(client: OpenAI, history: list) -> tuple[dict, str]:
             )
             raw    = resp.choices[0].message.content or ""
             print(f"[DEBUG] LLM raw: {raw[:300]}", flush=True)
-            print(f"[INFO] API call successful via {API_BASE_URL}", flush=True)
+            print(f"[SUCCESS] API call completed via {API_BASE_URL}", flush=True)
             action = parse_action(raw)
             return action, raw
         except Exception as exc:
@@ -220,23 +232,29 @@ def run_episode(client: OpenAI, task_id: str) -> dict:
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
-    if not API_KEY:
+    print(f"[INFO] Starting benchmark runner...", flush=True)
+    print(f"[INFO] API_BASE_URL = {API_BASE_URL}", flush=True)
+    print(f"[INFO] ENV_BASE_URL = {ENV_BASE_URL}", flush=True)
+    print(f"[INFO] MODEL_NAME   = {MODEL_NAME}",   flush=True)
+    print(f"[INFO] API_KEY set  = {bool(API_KEY and API_KEY.strip())}", flush=True)
+
+    if not API_KEY or API_KEY.strip() == "":
         print(
-            "ERROR: API_KEY (or HF_TOKEN / OPENAI_API_KEY) not set.",
+            "[CRITICAL] API_KEY not found. Must be set by evaluator or environment.",
             file=sys.stderr,
         )
         sys.exit(1)
 
-    print(f"[INFO] API_BASE_URL = {API_BASE_URL}", flush=True)
-    print(f"[INFO] ENV_BASE_URL = {ENV_BASE_URL}", flush=True)
-    print(f"[INFO] MODEL_NAME   = {MODEL_NAME}",   flush=True)
-
     # Build OpenAI client using injected env vars — required for hackathon LiteLLM proxy
     try:
+        print(f"[INFO] Initializing OpenAI client with:", flush=True)
+        print(f"       base_url={API_BASE_URL}", flush=True)
+        print(f"       api_key={'***' + API_KEY[-4:] if len(API_KEY) > 4 else '***'}", flush=True)
+        
         client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-        print(f"[INFO] OpenAI client initialized with base_url={API_BASE_URL}", flush=True)
+        print(f"[INFO] ✅ OpenAI client initialized successfully", flush=True)
     except Exception as exc:
-        print(f"[ERROR] Failed to initialize OpenAI client: {exc}", flush=True)
+        print(f"[CRITICAL] Failed to initialize OpenAI client: {exc}", flush=True)
         sys.exit(1)
 
     results = []

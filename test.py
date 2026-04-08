@@ -26,14 +26,11 @@ from openai import OpenAI
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
-# Google Generative AI (free tier)
-API_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
-MODEL_NAME   = "gemini-2.5-flash"   # Latest fast model
+# Local Ollama (no token needed)
+API_BASE_URL = "http://localhost:11434/v1/"
+MODEL_NAME   = "phi"   # Must match ollama pull mistral
 
-GEMINI_API_KEY = (
-    os.environ.get("GEMINI_API_KEY")
-    or os.environ.get("API_KEY")       # also works if you rename it
-)
+OLLAMA_TOKEN = "ollama-local"  # Dummy token for local use
 
 ENV_BASE_URL = os.environ.get("ENV_BASE_URL", "http://localhost:7860")
 TASKS        = ["task_easy", "task_medium", "task_hard"]
@@ -251,7 +248,7 @@ def check_server() -> bool:
 
 
 def check_gemini(client: OpenAI) -> bool:
-    print(f"[PREFLIGHT] Testing Gemini API connection ...", flush=True)
+    print(f"[PREFLIGHT] Testing HuggingFace API connection ...", flush=True)
     try:
         resp = client.chat.completions.create(
             model=MODEL_NAME,
@@ -259,8 +256,8 @@ def check_gemini(client: OpenAI) -> bool:
             max_tokens=50,
         )
         raw = resp.choices[0].message.content or ""
-        print(f"[PREFLIGHT] Gemini response: {raw[:100]}", flush=True)
-        print("[PREFLIGHT] Gemini API ✅", flush=True)
+        print(f"[PREFLIGHT] HuggingFace response: {raw[:100]}", flush=True)
+        print("[PREFLIGHT] HuggingFace API ✅", flush=True)
         return True
     except Exception as e:
         print(f"[PREFLIGHT] Gemini API FAILED: {e}", flush=True)
@@ -273,12 +270,8 @@ def main():
     print("  LOCAL EVALUATOR — Gemini 2.5 Pro")
     print("=" * 60)
 
-    if not GEMINI_API_KEY:
-        print("ERROR: Set GEMINI_API_KEY environment variable.", file=sys.stderr)
-        sys.exit(1)
-
     client = OpenAI(
-        api_key  = GEMINI_API_KEY,
+        api_key  = OLLAMA_TOKEN,
         base_url = API_BASE_URL,
     )
 
@@ -287,7 +280,7 @@ def main():
     server_ok = check_server()
 
     if not gemini_ok:
-        print("\n❌ Aborting — Gemini API is not reachable.", file=sys.stderr)
+        print("\n❌ Aborting — HuggingFace API is not reachable.", file=sys.stderr)
         sys.exit(1)
     if not server_ok:
         print("\n❌ Aborting — Environment server is not reachable.", file=sys.stderr)
