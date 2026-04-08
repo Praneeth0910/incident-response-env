@@ -8,3 +8,5 @@ incident_response_env.egg-info/requires.txt
 incident_response_env.egg-info/top_level.txt
 server/__init__.py
 server/app.py
+server/dashboard_impl.py
+server/gradio_app.py
