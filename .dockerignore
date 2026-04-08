@@ -1,0 +1,16 @@
+.vscode
+.git
+.gitignore
+.github
+*.egg-info/
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv
+venv
+.env
+uv.lock
+.DS_Store
+*.log
