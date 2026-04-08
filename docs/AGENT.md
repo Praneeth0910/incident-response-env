@@ -3,7 +3,7 @@
 
 This document is the primary operating manual for any AI agent (LLM-based or otherwise) interacting with this environment. Read it fully before issuing a single action.
 
----
+---:
 
 ## 1. What You Are Doing
 
