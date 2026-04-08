@@ -4,7 +4,7 @@ Incident Response Environment — Baseline Inference Script
 
 CRITICAL for hackathon validator:
   - Must use API_BASE_URL and API_KEY from environment (injected by LiteLLM proxy)
-  - Must NOT hardcode keys or use own credentials
+  - Must NOT hardcode keys or use own credentials (no HF_TOKEN, no OPENAI_API_KEY)
   - ENV_BASE_URL defaults to http://localhost:7860 (matches Docker EXPOSE)
 """
 from __future__ import annotations
@@ -17,19 +17,26 @@ import time
 import requests
 from openai import OpenAI
 
-# ── Config — READ STRICTLY FROM ENV (evaluator injection) ──────────────────────────
-# CRITICAL: No fallbacks to local credentials (HF_TOKEN, OPENAI_API_KEY)
-# Evaluator injects API_BASE_URL and API_KEY, we must use ONLY those
-try:
-    API_BASE_URL = os.environ["API_BASE_URL"]
-    API_KEY      = os.environ["API_KEY"]
-except KeyError as e:
-    print(f"[CRITICAL] Missing required environment variable: {e}", file=sys.stderr, flush=True)
+# ── Config — READ STRICTLY FROM ENV (evaluator injection) ─────────────────────
+print("[BOOTSTRAP] Checking for required environment variables...", flush=True)
+
+if "API_BASE_URL" not in os.environ:
+    print("[CRITICAL] API_BASE_URL not set in environment", file=sys.stderr, flush=True)
     sys.exit(1)
+API_BASE_URL = os.environ["API_BASE_URL"]
+print(f"[BOOTSTRAP] API_BASE_URL = {API_BASE_URL}", flush=True)
+
+if "API_KEY" not in os.environ:
+    print("[CRITICAL] API_KEY not set in environment", file=sys.stderr, flush=True)
+    sys.exit(1)
+API_KEY = os.environ["API_KEY"]
+print(f"[BOOTSTRAP] API_KEY set (length={len(API_KEY)})", flush=True)
 
 MODEL_NAME   = os.environ.get("MODEL_NAME", "gpt-4-turbo")
-# Port 7860 matches the Docker CMD / uvicorn --port 7860
 ENV_BASE_URL = os.environ.get("ENV_BASE_URL", "http://localhost:7860")
+
+print(f"[BOOTSTRAP] MODEL_NAME = {MODEL_NAME}", flush=True)
+print(f"[BOOTSTRAP] ENV_BASE_URL = {ENV_BASE_URL}", flush=True)
 
 BENCHMARK = "incident-response-env"
 TASKS     = ["task_easy", "task_medium", "task_hard"]
@@ -56,7 +63,7 @@ Rules:
 4. Do not repeat actions you have already taken.
 """
 
-# ── Logging (mandatory OpenEnv format) ───────────────────────────────────────
+# ── Logging (mandatory OpenEnv format) ────────────────────────────────────────
 
 def log_start(task: str, model: str) -> None:
     print(f"[START] task={task} env={BENCHMARK} model={model}", flush=True)
@@ -79,7 +86,7 @@ def log_end(success: bool, steps: int, score: float, rewards: list) -> None:
         flush=True,
     )
 
-# ── Env helpers ───────────────────────────────────────────────────────────────
+# ── Env helpers ────────────────────────────────────────────────────────────────
 
 def env_reset(task_id: str) -> dict:
     try:
@@ -131,42 +138,40 @@ def parse_action(text: str) -> dict:
 
 
 def get_llm_action(client: OpenAI, history: list) -> tuple[dict, str]:
+    """Call LLM API through evaluator-injected proxy using API_KEY."""
+    print(f"[API_CALL] Invoking LLM via {API_BASE_URL}", flush=True)
+    print(f"[API_CALL] Model: {MODEL_NAME}", flush=True)
+    print(f"[API_CALL] Messages in history: {len(history)}", flush=True)
+
     for attempt in range(3):
         try:
-            print(
-                f"[TRACE] About to call LLM API (attempt {attempt+1}/3):",
-                flush=True,
-            )
-            print(f"        URL: {API_BASE_URL}", flush=True)
-            print(f"        Model: {MODEL_NAME}", flush=True)
-            print(f"        Using injected credentials: {bool(API_KEY)}", flush=True)
-            
             resp = client.chat.completions.create(
                 model=MODEL_NAME,
                 messages=history,
                 max_tokens=200,
                 temperature=0.0,
             )
-            raw    = resp.choices[0].message.content or ""
-            print(f"[DEBUG] LLM raw: {raw[:300]}", flush=True)
-            print(f"[SUCCESS] API call completed via {API_BASE_URL}", flush=True)
+            raw = resp.choices[0].message.content or ""
+            print(f"[API_CALL] Response received ({len(raw)} chars)", flush=True)
             action = parse_action(raw)
+            print(f"[API_CALL] Parsed action: {action}", flush=True)
             return action, raw
         except Exception as exc:
             print(f"[ERROR] LLM call failed (attempt {attempt+1}/3): {exc}", flush=True)
-            if attempt < 2:
-                time.sleep(5 * (attempt + 1))
-            else:
-                print(f"[CRITICAL] All LLM attempts failed. Using fallback action.", flush=True)
+            time.sleep(5 * (attempt + 1))
+
+    # all retries failed — use safe fallback
+    print("[ERROR] All LLM retries exhausted, using fallback action", flush=True)
     return {"action_type": "check_metrics", "target": "api-gateway"}, "LLM_ERROR"
 
-# ── Episode runner ────────────────────────────────────────────────────────────
+# ── Episode runner ─────────────────────────────────────────────────────────────
 
 def run_episode(client: OpenAI, task_id: str) -> dict:
     log_start(task=task_id, model=MODEL_NAME)
     rewards, steps_taken, score, success = [], 0, 0.0, False
 
     try:
+        print(f"[EPISODE] Resetting environment for {task_id}", flush=True)
         obs     = env_reset(task_id)
         alert   = obs.get("alert", "")
         message = obs.get("message", "")
@@ -178,18 +183,19 @@ def run_episode(client: OpenAI, task_id: str) -> dict:
         max_steps = {"task_easy": 10, "task_medium": 15, "task_hard": 20}[task_id]
 
         for step in range(1, max_steps + 1):
+            print(f"[EPISODE] Step {step}/{max_steps}", flush=True)
             action, raw_response = get_llm_action(client, history)
 
             if "action_type" not in action or "target" not in action:
                 action = {"action_type": "check_metrics", "target": "api-gateway"}
 
             try:
-                result   = env_step(action)
-                obs_data = result.get("observation", {})
+                result     = env_step(action)
+                obs_data   = result.get("observation", {})
                 reward_obj = result.get("reward", {})
-                reward   = reward_obj.get("value", 0.0) if isinstance(reward_obj, dict) else float(reward_obj)
-                done     = result.get("done", False)
-                error    = obs_data.get("error") or "null"
+                reward     = reward_obj.get("value", 0.0) if isinstance(reward_obj, dict) else float(reward_obj)
+                done       = result.get("done", False)
+                error      = obs_data.get("error") or "null"
 
                 rewards.append(reward)
                 steps_taken = step
@@ -219,43 +225,31 @@ def run_episode(client: OpenAI, task_id: str) -> dict:
         success = score >= 0.6
 
     except Exception as exc:
-        print(f"[DEBUG] Episode error: {exc}", flush=True)
-        score = max(0.0, min(1.0, sum(rewards))) if rewards else 0.0
+        print(f"[ERROR] Episode failed: {exc}", flush=True)
 
     finally:
         log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
 
     return {"task_id": task_id, "score": score, "steps": steps_taken, "success": success}
 
-# ── Main ──────────────────────────────────────────────────────────────────────
+# ── Main ───────────────────────────────────────────────────────────────────────
 
 def main():
-    print(f"[INFO] Starting benchmark runner...", flush=True)
-    print(f"[INFO] API_BASE_URL = {API_BASE_URL}", flush=True)
-    print(f"[INFO] ENV_BASE_URL = {ENV_BASE_URL}", flush=True)
-    print(f"[INFO] MODEL_NAME   = {MODEL_NAME}",   flush=True)
-    print(f"[INFO] Using evaluator-injected API_KEY (length: {len(API_KEY)})", flush=True)
+    print(f"[MAIN] Starting benchmark runner...", flush=True)
+    print(f"[MAIN] API_BASE_URL = {API_BASE_URL}", flush=True)
+    print(f"[MAIN] ENV_BASE_URL = {ENV_BASE_URL}", flush=True)
+    print(f"[MAIN] MODEL_NAME   = {MODEL_NAME}", flush=True)
 
-    # Build OpenAI client using ONLY evaluator-injected env vars (no fallbacks)
-    try:
-        print(f"[INFO] Initializing OpenAI client with:", flush=True)
-        print(f"       base_url={API_BASE_URL}", flush=True)
-        print(f"       api_key=***{API_KEY[-4:] if len(API_KEY) > 4 else '***'}", flush=True)
-        
-        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
-        print(f"[INFO] ✅ OpenAI client initialized successfully", flush=True)
-    except Exception as exc:
-        print(f"[CRITICAL] Failed to initialize OpenAI client: {exc}", flush=True)
-        sys.exit(1)
+    # CRITICAL: use API_KEY (evaluator-injected), never HF_TOKEN or own credentials
+    print(f"[CLIENT_INIT] Creating OpenAI client with evaluator-provided API_KEY...", flush=True)
+    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    print(f"[CLIENT_INIT] ✓ OpenAI client created", flush=True)
 
     results = []
     for task_id in TASKS:
-        try:
-            result = run_episode(client, task_id)
-            results.append(result)
-        except Exception as exc:
-            print(f"[ERROR] Episode {task_id} failed: {exc}", flush=True)
-            results.append({"task_id": task_id, "score": 0.0, "steps": 0, "success": False})
+        print(f"[EPISODE] Running {task_id}...", flush=True)
+        result = run_episode(client, task_id)
+        results.append(result)
 
     print("\n" + "=" * 55, flush=True)
     print("FINAL SUMMARY", flush=True)
