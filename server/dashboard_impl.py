@@ -648,11 +648,14 @@ def _render_help_terminal() -> str:
   <div><span class="help-command">  rollback_deployment</span><span class="help-desc">Rollback (penalised if wrong service)</span></div>
   <div><span class="help-command">  declare_rca</span><span class="help-desc">Declare root cause — ends episode</span></div>
   <span class="help-section-title">SCORING</span>
-  <div><span class="help-command">  Pass threshold</span><span class="help-desc">&ge; 0.6</span></div>
-  <div><span class="help-command">  Evidence</span><span class="help-desc">+0.05 to +0.12 per relevant find</span></div>
-  <div><span class="help-command">  Correct fix</span><span class="help-desc">+0.30</span></div>
-  <div><span class="help-command">  Correct RCA</span><span class="help-desc">+0.50 + time bonus</span></div>
-  <div><span class="help-command">  Redundant</span><span class="help-desc">&minus;0.05</span></div>
+  <div><span class="help-command">  Evidence found</span><span class="help-desc">+0.05 to +0.12</span></div>
+  <div><span class="help-command">  Redundant action</span><span class="help-desc">+0.005</span></div>
+  <div><span class="help-command">  Correct intervention</span><span class="help-desc">+0.30</span></div>
+  <div><span class="help-command">  Wrong service restarted</span><span class="help-desc">+0.05</span></div>
+  <div><span class="help-command">  Wrong service rolled back</span><span class="help-desc">+0.01</span></div>
+  <div><span class="help-command">  Correct RCA</span><span class="help-desc">+0.50 + time &amp; evidence bonus</span></div>
+  <div><span class="help-command">  Wrong RCA</span><span class="help-desc">+0.001</span></div>
+  <div><span class="help-command">  Cumulative range</span><span class="help-desc">[0.01, 0.99]</span></div>
   <span class="help-section-title">ENDPOINTS</span>
   <div><span class="help-command">  POST /reset</span><span class="help-desc">{"task_id": "task_easy", "seed": 42}</span></div>
   <div><span class="help-command">  POST /step</span><span class="help-desc">{"action_type": "check_health", "target": "api-gateway"}</span></div>
