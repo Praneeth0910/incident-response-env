@@ -19,9 +19,14 @@ for i in $(seq 1 30); do
     sleep 2
 done
 
-# Now run inference.py (makes LLM API calls through the proxy)
-echo "[start.sh] Running inference.py..."
-python inference.py
+# Only run inference if API_KEY is injected (validator will inject it)
+if [ -n "$API_KEY" ]; then
+    echo "[start.sh] API_KEY detected. Running inference.py..."
+    python inference.py
+    echo "[start.sh] inference.py finished."
+else
+    echo "[start.sh] API_KEY not set — skipping inference.py (waiting for validator to inject)."
+fi
 
-echo "[start.sh] inference.py finished. Keeping server alive..."
+# Keep the server alive
 wait $SERVER_PID
