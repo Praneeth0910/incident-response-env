@@ -16,11 +16,13 @@ Import from dashboard.py with:
 
 from __future__ import annotations
 
+import html
+import os
 import random
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Generator
+from typing import Generator, Dict, Any, List, Tuple
 
 import gradio as gr
 
@@ -868,21 +870,16 @@ def _build_episode_outputs(
     str,
     str,
     str,
-    str,
-    str,
-    str,
     List[List[Any]],
     str,
     str,
     Dict[str, Any],
     str,
+    str,
 ]:
     return (
         state,
         _render_status_panel(state),
-        _render_alert(state["alert"]),
-        state["last_message"],
-        "\n".join(state["terminal_log"]),
         _render_alert(state["alert"]),
         _render_episode_timeline(state),
         _history_rows(state),
@@ -1092,7 +1089,7 @@ def create_dashboard(env_instance: Optional[IncidentResponseEnv] = None):
                             grade_btn = gr.Button("Grade")
                     with gr.Column(scale=2):
                         model_dropdown = gr.Dropdown(
-                            choices=list(_KNOWN_MODELS.keys()),
+                            choices=MODEL_CHOICES,
                             value="openai/gpt-4o",
                             label="MODEL ID",
                         )
@@ -1178,9 +1175,6 @@ def create_dashboard(env_instance: Optional[IncidentResponseEnv] = None):
         episode_outputs = [
             ui_state,
             status_html,
-            dashboard_alert_html,
-            observation_box,
-            terminal_box,
             live_alert_html,
             timeline_html,
             history_table,
