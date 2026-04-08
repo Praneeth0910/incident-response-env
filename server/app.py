@@ -20,6 +20,7 @@ from __future__ import annotations
 import sys
 import os
 import traceback
+from typing import Optional
 
 # Ensure project root is on path so imports work locally and in Docker
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -55,14 +56,16 @@ async def health():
 
 
 @_app.post("/reset")
-async def reset(body: ResetRequest):
+async def reset(body: Optional[ResetRequest] = None):
     global _env
     try:
+        task_id = body.task_id if body else "task_easy"
+        seed = body.seed if body else None
         _env = IncidentResponseEnv()
-        obs = _env.reset(task_id=body.task_id, seed=body.seed)
+        obs = _env.reset(task_id=task_id, seed=seed)
         return obs.model_dump()
     except KeyError:
-        raise HTTPException(status_code=400, detail=f"Unknown task_id: {body.task_id}")
+        raise HTTPException(status_code=400, detail=f"Unknown task_id: {task_id}")
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
