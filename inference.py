@@ -17,21 +17,19 @@ import time
 import requests
 from openai import OpenAI
 
-# ── Config — READ FROM ENV, never hardcode ─────────────────────────────────────
-API_BASE_URL = os.environ.get("API_BASE_URL", "https://router.huggingface.co/v1")
-# Hackathon injects API_KEY; fall back to HF_TOKEN / OPENAI_API_KEY for local testing
-API_KEY      = (
-    os.environ.get("API_KEY")
-    or os.environ.get("HF_TOKEN")
-    or os.environ.get("OPENAI_API_KEY")
-)
-MODEL_NAME   = os.environ.get("MODEL_NAME", "Qwen/Qwen2.5-72B-Instruct")
+# ── Config — READ STRICTLY FROM ENV (evaluator injection) ──────────────────────────
+# CRITICAL: No fallbacks to local credentials (HF_TOKEN, OPENAI_API_KEY)
+# Evaluator injects API_BASE_URL and API_KEY, we must use ONLY those
+try:
+    API_BASE_URL = os.environ["API_BASE_URL"]
+    API_KEY      = os.environ["API_KEY"]
+except KeyError as e:
+    print(f"[CRITICAL] Missing required environment variable: {e}", file=sys.stderr, flush=True)
+    sys.exit(1)
+
+MODEL_NAME   = os.environ.get("MODEL_NAME", "gpt-4-turbo")
 # Port 7860 matches the Docker CMD / uvicorn --port 7860
 ENV_BASE_URL = os.environ.get("ENV_BASE_URL", "http://localhost:7860")
-
-# Validate that we have API credentials
-if not API_KEY or API_KEY.strip() == "":
-    print("[WARNING] API_KEY is empty. Evaluator may not be injecting credentials.", flush=True)
 
 BENCHMARK = "incident-response-env"
 TASKS     = ["task_easy", "task_medium", "task_hard"]
@@ -236,20 +234,13 @@ def main():
     print(f"[INFO] API_BASE_URL = {API_BASE_URL}", flush=True)
     print(f"[INFO] ENV_BASE_URL = {ENV_BASE_URL}", flush=True)
     print(f"[INFO] MODEL_NAME   = {MODEL_NAME}",   flush=True)
-    print(f"[INFO] API_KEY set  = {bool(API_KEY and API_KEY.strip())}", flush=True)
+    print(f"[INFO] Using evaluator-injected API_KEY (length: {len(API_KEY)})", flush=True)
 
-    if not API_KEY or API_KEY.strip() == "":
-        print(
-            "[CRITICAL] API_KEY not found. Must be set by evaluator or environment.",
-            file=sys.stderr,
-        )
-        sys.exit(1)
-
-    # Build OpenAI client using injected env vars — required for hackathon LiteLLM proxy
+    # Build OpenAI client using ONLY evaluator-injected env vars (no fallbacks)
     try:
         print(f"[INFO] Initializing OpenAI client with:", flush=True)
         print(f"       base_url={API_BASE_URL}", flush=True)
-        print(f"       api_key={'***' + API_KEY[-4:] if len(API_KEY) > 4 else '***'}", flush=True)
+        print(f"       api_key=***{API_KEY[-4:] if len(API_KEY) > 4 else '***'}", flush=True)
         
         client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
         print(f"[INFO] ✅ OpenAI client initialized successfully", flush=True)
