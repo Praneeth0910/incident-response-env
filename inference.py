@@ -139,11 +139,15 @@ def get_llm_action(client: OpenAI, history: list) -> tuple[dict, str]:
             )
             raw    = resp.choices[0].message.content or ""
             print(f"[DEBUG] LLM raw: {raw[:300]}", flush=True)
+            print(f"[INFO] API call successful via {API_BASE_URL}", flush=True)
             action = parse_action(raw)
             return action, raw
         except Exception as exc:
             print(f"[ERROR] LLM call failed (attempt {attempt+1}/3): {exc}", flush=True)
-            time.sleep(5 * (attempt + 1))
+            if attempt < 2:
+                time.sleep(5 * (attempt + 1))
+            else:
+                print(f"[CRITICAL] All LLM attempts failed. Using fallback action.", flush=True)
     return {"action_type": "check_metrics", "target": "api-gateway"}, "LLM_ERROR"
 
 # ── Episode runner ────────────────────────────────────────────────────────────
@@ -228,12 +232,21 @@ def main():
     print(f"[INFO] MODEL_NAME   = {MODEL_NAME}",   flush=True)
 
     # Build OpenAI client using injected env vars — required for hackathon LiteLLM proxy
-    client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+    try:
+        client = OpenAI(base_url=API_BASE_URL, api_key=API_KEY)
+        print(f"[INFO] OpenAI client initialized with base_url={API_BASE_URL}", flush=True)
+    except Exception as exc:
+        print(f"[ERROR] Failed to initialize OpenAI client: {exc}", flush=True)
+        sys.exit(1)
 
     results = []
     for task_id in TASKS:
-        result = run_episode(client, task_id)
-        results.append(result)
+        try:
+            result = run_episode(client, task_id)
+            results.append(result)
+        except Exception as exc:
+            print(f"[ERROR] Episode {task_id} failed: {exc}", flush=True)
+            results.append({"task_id": task_id, "score": 0.0, "steps": 0, "success": False})
 
     print("\n" + "=" * 55, flush=True)
     print("FINAL SUMMARY", flush=True)
