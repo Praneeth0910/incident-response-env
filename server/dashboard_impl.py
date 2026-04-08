@@ -639,14 +639,21 @@ def _render_help_terminal() -> str:
   <div><span class="help-command">  /leaderboard</span><span class="help-desc">Top model rankings, podium</span></div>
   <div><span class="help-command">  /logs</span><span class="help-desc">Raw log stream from last benchmark</span></div>
   <div><span class="help-command">  /help</span><span class="help-desc">This page</span></div>
+  <span class="help-section-title">TASKS</span>
+  <div><span class="help-command">  task_easy</span><span class="help-desc">OOM crash on notification-service (10 steps)</span></div>
+  <div><span class="help-command">  task_medium</span><span class="help-desc">Bad deployment cascading failure (15 steps)</span></div>
+  <div><span class="help-command">  task_hard</span><span class="help-desc">Redis pool exhaustion + CPU red herring (20 steps)</span></div>
+  <span class="help-section-title">AVAILABLE SERVICES</span>
+  <div><span class="help-command">  api-gateway</span><span class="help-command">  auth-service</span><span class="help-command">  order-service</span></div>
+  <div><span class="help-command">  notification-service</span><span class="help-command">  redis-cache</span><span class="help-command">  postgres-db</span></div>
   <span class="help-section-title">ACTIONS</span>
-  <div><span class="help-command">  check_health</span><span class="help-desc">UP / DEGRADED / DOWN status</span></div>
-  <div><span class="help-command">  check_metrics</span><span class="help-desc">Latency, error rate, CPU, memory</span></div>
-  <div><span class="help-command">  read_logs</span><span class="help-desc">Recent log lines from service</span></div>
-  <div><span class="help-command">  run_db_query</span><span class="help-desc">Diagnostic SQL — target: postgres-db</span></div>
-  <div><span class="help-command">  restart_service</span><span class="help-desc">Restart (penalised if wrong service)</span></div>
-  <div><span class="help-command">  rollback_deployment</span><span class="help-desc">Rollback (penalised if wrong service)</span></div>
-  <div><span class="help-command">  declare_rca</span><span class="help-desc">Declare root cause — ends episode</span></div>
+  <div><span class="help-command">  check_health</span><span class="help-desc">Returns UP / DEGRADED / DOWN status</span></div>
+  <div><span class="help-command">  check_metrics</span><span class="help-desc">Returns latency, error_rate, cpu, memory</span></div>
+  <div><span class="help-command">  read_logs</span><span class="help-desc">Returns log lines from a service</span></div>
+  <div><span class="help-command">  run_db_query</span><span class="help-desc">Runs diagnostic SQL against postgres</span></div>
+  <div><span class="help-command">  restart_service</span><span class="help-desc">Restarts a service — penalized if wrong</span></div>
+  <div><span class="help-command">  rollback_deployment</span><span class="help-desc">Rolls back — penalized if wrong</span></div>
+  <div><span class="help-command">  declare_rca</span><span class="help-desc">Terminal action — declares root cause</span></div>
   <span class="help-section-title">SCORING</span>
   <div><span class="help-command">  Evidence found</span><span class="help-desc">+0.05 to +0.12</span></div>
   <div><span class="help-command">  Redundant action</span><span class="help-desc">+0.005</span></div>
