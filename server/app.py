@@ -6,12 +6,7 @@
 # uvicorn is launched from the project root, which puts "." on sys.path.
 # ─────────────────────────────────────────────────────────────────────────────
 
-import sys
 import os
-
-# Ensure project root is always on the path (handles edge cases in Docker)
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
 from typing import Optional
 import traceback
 
@@ -24,7 +19,7 @@ from models import Action, Observation, ResetRequest, StepResponse
 from environment import IncidentResponseEnv, TASKS
 
 # Gradio dashboard from sibling file in server/
-from .dashboard import create_dashboard
+from .dashboard_impl import create_dashboard
 
 # ── App ───────────────────────────────────────────────────────────────────────
 
