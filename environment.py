@@ -104,6 +104,12 @@ def _make_logs(service: str, task: dict) -> str:
                 f"[ERROR] {service}: timeout waiting for connection after 5000ms\n"
                 f"[WARN]  {service}: connection leak detected in session handler"
             )
+    elif service in task.get("red_herrings", []):
+        return (
+            f"[WARN] {service}: CPU spike detected (92%)\n"
+            f"[INFO] {service}: processing requests normally\n"
+            f"[INFO] {service}: no errors in last 5 minutes"
+        )
     elif service == "api-gateway":
         return (
             f"[WARN]  {service}: upstream timeout from order-service (4800ms)\n"
@@ -180,8 +186,6 @@ class IncidentResponseEnv:
 
         self._step_count += 1
         task = self._task
-        if task is None:
-            raise RuntimeError("Task is not initialized. Call reset() first.")
         fault_svc = task["fault_service"]
         fault_type = task["fault_type"]
         max_steps = task["max_steps"]
@@ -275,8 +279,8 @@ class IncidentResponseEnv:
                     reward_reason = "restarted fault service but wrong fix for this fault type"
                     message = f"{action.target} restarted but issue persists — wrong fix."
                 else:
-                    reward_value = 0.05
-                    reward_reason = "wrong service restarted — wasted time, cascading risk"
+                    reward_value = 0.001
+                    reward_reason = "wrong service restarted — near-zero reward, cascading damage"
                     message = f"{action.target} restarted but errors persist. Cascading risk increased."
 
             # ── rollback_deployment ───────────────────────────────────────────
@@ -290,8 +294,8 @@ class IncidentResponseEnv:
                     reward_reason = "rollback on fault service but not the right fix"
                     message = f"Rollback completed but issue persists."
                 else:
-                    reward_value = 0.01 #used very less reward instead of negative reward.
-                    reward_reason = "rolled back wrong service"
+                    reward_value = 0.001
+                    reward_reason = "rolled back wrong service — near-zero reward, wasteful intervention"
                     message = f"Rolled back {action.target} — no improvement. Wrong target."
 
             # ── declare_rca ───────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import json
 import math
 import os
 import sys
+import time
 import requests
 from openai import OpenAI
 
@@ -149,7 +150,6 @@ def parse_action(text: str) -> dict:
 
 
 def get_llm_action(client: OpenAI, history: list) -> tuple[dict, str]:
-    import time
     for attempt in range(3):
         try:
             resp = client.chat.completions.create(
@@ -168,8 +168,8 @@ def get_llm_action(client: OpenAI, history: list) -> tuple[dict, str]:
         except Exception as e:
             print(f"[ERROR] LLM call failed (attempt {attempt+1}/3): {e}", flush=True)
             time.sleep(5 * (attempt + 1))  # backoff: 5s, 10s, 15s
-    # all retries failed
-    return {"action_type": "check_metrics", "target": "api-gateway"}, "LLM_ERROR"
+    # all retries failed — return fallback action with empty response to avoid poisoning history
+    return {"action_type": "check_metrics", "target": "api-gateway"}, ""
 
 
 # ── Episode runner ────────────────────────────────────────────────────────────
@@ -219,8 +219,9 @@ def run_episode(client: OpenAI, task_id: str) -> dict:
                     error=str(error),
                 )
 
-                # add assistant + env response to history
-                history.append({"role": "assistant", "content": raw_response})
+                # add assistant + env response to history (skip empty assistant messages from LLM failures)
+                if raw_response:
+                    history.append({"role": "assistant", "content": raw_response})
                 history.append({
                     "role": "user",
                     "content": (
@@ -239,7 +240,8 @@ def run_episode(client: OpenAI, task_id: str) -> dict:
                 rewards.append(0.0)
                 log_step(step=step, action=action, reward=0.0,
                          done=False, error=error_msg)
-                history.append({"role": "assistant", "content": raw_response})
+                if raw_response:
+                    history.append({"role": "assistant", "content": raw_response})
                 history.append({"role": "user",
                                 "content": f"Error: {error_msg}. Try a different action."})
 
