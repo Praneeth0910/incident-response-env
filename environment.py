@@ -7,147 +7,114 @@ from models import Action, Observation, Reward
 # New tasks drawn from real incidents at Netflix, Stripe, GitHub, Cloudflare, Meta
 
 TASKS = {
-    # ── EASY (single service, no red herrings, clear signal) ──────────────────
-
-    "task_easy": {
-        "name": "OOM crash — notification service",
-        "difficulty": "easy",
-        "max_steps": 10,
-        "description": "Notification service crashed due to out-of-memory error.",
-        "alert": "ALERT: High error rate detected. API gateway reporting 500s. Latency p99: 3.8s.",
-        "fault_service": "notification-service",
-        "fault_type": "oom_crash",
-        "red_herrings": [],
-        "ideal_steps": 3,
-    },
+    # ── NEW 9 TASKS (updated for current benchmark) ─────────────────────────
 
     "task_cpu_spike": {
-        "name": "CPU hot-loop — auth service",
-        "difficulty": "easy",
-        "max_steps": 10,
-        "description": (
-            "A hot loop in JWT validation is pegging auth-service CPU at 99%. "
-            "Login requests time out. Restart clears the runaway thread. "
-            "Based on the 2021 Fastly single-config outage pattern."
-        ),
+        "name": "Auth service CPU hard loop",
+        "difficulty": "medium",
+        "max_steps": 15,
+        "description": "A hot loop in JWT validation is pegging auth-service CPU at 99%.",
         "alert": "ALERT: Login latency p99 > 8s. Auth service CPU at 99%. Users cannot sign in.",
         "fault_service": "auth-service",
         "fault_type": "cpu_spike",
         "red_herrings": [],
-        "ideal_steps": 3,
+        "ideal_steps": 5,
     },
 
-    "task_disk_full": {
-        "name": "Disk full — postgres WAL overflow",
-        "difficulty": "easy",
-        "max_steps": 10,
-        "description": (
-            "The database WAL log grew unbounded after auto-vacuum was disabled. "
-            "Disk hit 100% — all INSERT/UPDATE fail with ENOSPC. "
-            "Mirrors the GitHub 2018 24-minute outage."
-        ),
-        "alert": "ALERT: Write operations failing. postgres-db throwing ENOSPC errors. Order creation down 100%.",
+    "task_db_connection_leak": {
+        "name": "Database connection pool exhaustion",
+        "difficulty": "medium",
+        "max_steps": 15,
+        "description": "Connection pool leak in order-service causing cascading failures.",
+        "alert": "ALERT: Database connection timeouts. Order creation failing 100%. Latency spiking.",
+        "fault_service": "order-service",
+        "fault_type": "connection_pool_exhausted",
+        "red_herrings": ["postgres-db"],
+        "ideal_steps": 6,
+    },
+
+    "task_redis_memory_eviction": {
+        "name": "Redis cache memory eviction cascade",
+        "difficulty": "medium",
+        "max_steps": 15,
+        "description": "Redis memory threshold hit, evicting keys. Cache hit rate collapsing.",
+        "alert": "ALERT: Cache miss rate 89%. redis-cache evicting keys. Session data loss. API latency 5000ms+.",
+        "fault_service": "redis-cache",
+        "fault_type": "memory_eviction",
+        "red_herrings": ["api-gateway"],
+        "ideal_steps": 5,
+    },
+
+    "task_api_rate_limit": {
+        "name": "API rate limit misconfiguration",
+        "difficulty": "medium",
+        "max_steps": 15,
+        "description": "Rate limiter threshold set too low, blocking legitimate traffic.",
+        "alert": "ALERT: 429 Too Many Requests from api-gateway. Traffic being throttled. User impact increasing.",
+        "fault_service": "api-gateway",
+        "fault_type": "rate_limit_exceeded",
+        "red_herrings": ["order-service"],
+        "ideal_steps": 6,
+    },
+
+    "task_deadlock_order_service": {
+        "name": "Database deadlock in order-service",
+        "difficulty": "medium",
+        "max_steps": 15,
+        "description": "Concurrent order transactions causing PostgreSQL deadlock.",
+        "alert": "ALERT: Database deadlock detected. orders_db throwing deadlock errors. Transactions rolling back.",
         "fault_service": "postgres-db",
-        "fault_type": "disk_full",
+        "fault_type": "deadlock",
+        "red_herrings": ["order-service"],
+        "ideal_steps": 6,
+    },
+
+    "task_ssl_cert_expired": {
+        "name": "TLS certificate expiration",
+        "difficulty": "medium",
+        "max_steps": 15,
+        "description": "SSL certificate for api-gateway expired, causing TLS handshake failures.",
+        "alert": "ALERT: TLS handshake failures on api-gateway. x509 certificate expired 3 days ago.",
+        "fault_service": "api-gateway",
+        "fault_type": "cert_expired",
         "red_herrings": [],
         "ideal_steps": 4,
     },
 
-    # ── MEDIUM (cascading failures, 1 red herring, 5–7 ideal steps) ──────────
-
-    "task_medium": {
-        "name": "Cascading failure from bad deployment",
+    "task_slow_query_postgres": {
+        "name": "Slow PostgreSQL query degradation",
         "difficulty": "medium",
         "max_steps": 15,
-        "description": "Bad deployment on order-service caused cascading failures.",
-        "alert": "ALERT: Multiple services degraded. Error rate 38%. Users cannot complete orders.",
-        "fault_service": "order-service",
-        "fault_type": "bad_deployment",
-        "red_herrings": ["auth-service"],
+        "description": "Missing database index causing full table scan on high-traffic query.",
+        "alert": "ALERT: postgres-db query latency 8000ms+. Sequential scan on large table. order-service timing out.",
+        "fault_service": "postgres-db",
+        "fault_type": "slow_query",
+        "red_herrings": ["order-service"],
         "ideal_steps": 6,
     },
 
-    "task_memory_leak": {
-        "name": "Memory leak — notification service GC pauses",
+    "task_auth_service_500": {
+        "name": "Auth service internal server error",
         "difficulty": "medium",
         "max_steps": 15,
-        "description": (
-            "A memory leak in the email template renderer caused notification-service "
-            "to grow from 400 MB to 3.8 GB over 2 hours. GC pauses now take 10+ seconds, "
-            "cascading timeouts to api-gateway. Mirrors the Slack 2022 memory leak incident."
-        ),
-        "alert": "ALERT: Gradual service degradation over 2 hours. notification-service GC pauses 10s+. api-gateway 504s.",
-        "fault_service": "notification-service",
-        "fault_type": "memory_leak",
-        "red_herrings": ["api-gateway"],
-        "ideal_steps": 6,
-    },
-
-    "task_thread_starvation": {
-        "name": "Thread pool exhaustion — auth service OAuth sync calls",
-        "difficulty": "medium",
-        "max_steps": 15,
-        "description": (
-            "A new OAuth integration added synchronous HTTP calls inside auth-service's "
-            "request handler. With 200 concurrent logins, all threads are blocked waiting on I/O. "
-            "notification-service email queue grows as a symptom. "
-            "Mirrors Twitter login failures during live events, 2020."
-        ),
-        "alert": "ALERT: Login requests hanging indefinitely. auth-service thread pool exhausted. Email queue backing up.",
+        "description": "Null pointer exception in auth token validation handler.",
+        "alert": "ALERT: auth-service returning 500 errors. Token validation failing. Login completely down.",
         "fault_service": "auth-service",
-        "fault_type": "thread_pool_exhausted",
-        "red_herrings": ["notification-service"],
+        "fault_type": "null_pointer",
+        "red_herrings": [],
         "ideal_steps": 5,
     },
 
-    # ── HARD (deep cascades, 2 red herrings, DB confirmation needed) ─────────
-
-    "task_hard": {
-        "name": "Redis connection pool exhaustion with red herring",
-        "difficulty": "hard",
-        "max_steps": 20,
-        "description": "Redis connection pool exhausted. CPU spike on order-service is a red herring.",
-        "alert": "ALERT: Cascading timeouts across 4 services. p99 latency: 9.2s. On-call paged.",
-        "fault_service": "redis-cache",
-        "fault_type": "connection_pool_exhausted",
-        "red_herrings": ["order-service"],
-        "ideal_steps": 8,
-    },
-
-    "task_canary_poison": {
-        "name": "Canary misconfiguration — api-gateway strips auth headers",
-        "difficulty": "hard",
-        "max_steps": 20,
-        "description": (
-            "A canary deployment of api-gateway v2.1 receives 10% of traffic. "
-            "The canary build strips the Authorization header before forwarding. "
-            "Errors appear distributed across order-service and auth-service — wherever "
-            "the canary routes. The 10% failure rate and canary tag in logs are the tells. "
-            "Mirrors Etsy 2-hour partial outage affecting 10% of checkout flows."
-        ),
-        "alert": "ALERT: Exactly 10% of requests failing across all endpoints. order-service 500s. Auth sessions dropping.",
-        "fault_service": "api-gateway",
-        "fault_type": "canary_misconfiguration",
-        "red_herrings": ["order-service", "auth-service"],
-        "ideal_steps": 8,
-    },
-
-    "task_clock_skew": {
-        "name": "Clock skew — auth service NTP drift causes token rejections",
-        "difficulty": "hard",
-        "max_steps": 20,
-        "description": (
-            "NTP daemon on auth-service's host was killed during a kernel update. "
-            "Auth-service clock drifted 8 minutes ahead. JWTs it issues have future iat timestamps — "
-            "other services reject them as 'not yet valid'. "
-            "redis-cache shows high miss rate (wrong TTL). order-service rejects 25% of requests. "
-            "Mirrors Stripe 4-hour auth outage, 2020."
-        ),
-        "alert": "ALERT: Intermittent auth failures. 25% of tokens rejected as expired. redis-cache miss rate up. order-service errors.",
-        "fault_service": "auth-service",
-        "fault_type": "clock_skew",
-        "red_herrings": ["redis-cache", "order-service"],
-        "ideal_steps": 9,
+    "task_k8s_pod_crashloop": {
+        "name": "Kubernetes pod crash loop",
+        "difficulty": "medium",
+        "max_steps": 15,
+        "description": "notification-service pod in crash loop due to unhandled exception.",
+        "alert": "ALERT: notification-service pod crashing (exit code 1). Crash loop detected. Email notifications blocked.",
+        "fault_service": "notification-service",
+        "fault_type": "crash_loop",
+        "red_herrings": [],
+        "ideal_steps": 5,
     },
 }
 
@@ -405,7 +372,7 @@ class IncidentResponseEnv:
 
     # ── reset ─────────────────────────────────────────────────────────────────
 
-    def reset(self, task_id: str = "task_easy", seed: Optional[int] = None) -> Observation:
+    def reset(self, task_id: str = "task_cpu_spike", seed: Optional[int] = None) -> Observation:
         if task_id not in TASKS:
             raise KeyError(f"Unknown task_id '{task_id}'. Available: {list(TASKS.keys())}")
         if seed is not None:

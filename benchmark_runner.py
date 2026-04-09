@@ -26,7 +26,11 @@ BENCHMARK_FILE = Path(os.getenv("BENCHMARK_FILE", str(DEFAULT_BENCHMARK_FILE)))
 
 BENCHMARK = "incident-response-env"
 BENCHMARK_ID = f"{BENCHMARK}-v1"
-TASKS = ["task_easy", "task_medium", "task_hard"]
+TASKS = [
+    "task_cpu_spike", "task_db_connection_leak", "task_redis_memory_eviction",
+    "task_api_rate_limit", "task_deadlock_order_service", "task_ssl_cert_expired",
+    "task_slow_query_postgres", "task_auth_service_500", "task_k8s_pod_crashloop",
+]
 
 SYSTEM_PROMPT = """You are an expert Site Reliability Engineer responding to a production incident.
 
@@ -326,7 +330,7 @@ def run_episode(
             {"role": "user", "content": f"ALERT: {alert}\n\n{message}"},
         ]
 
-        max_steps = {"task_easy": 10, "task_medium": 15, "task_hard": 20}[task_id]
+        max_steps = 15  # All 9 incident tasks use same step limit
 
         for step in range(1, max_steps + 1):
             action, raw_response = get_llm_action(
