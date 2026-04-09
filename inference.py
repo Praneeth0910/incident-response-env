@@ -39,7 +39,11 @@ print(f"[BOOTSTRAP] MODEL_NAME = {MODEL_NAME}", flush=True)
 print(f"[BOOTSTRAP] ENV_BASE_URL = {ENV_BASE_URL}", flush=True)
 
 BENCHMARK = "incident-response-env"
-TASKS     = ["task_easy", "task_medium", "task_hard"]
+TASKS = [
+    "task_cpu_spike", "task_db_connection_leak", "task_redis_memory_eviction",
+    "task_api_rate_limit", "task_deadlock_order_service", "task_ssl_cert_expired",
+    "task_slow_query_postgres", "task_auth_service_500", "task_k8s_pod_crashloop",
+]
 
 SYSTEM_PROMPT = """You are an expert Site Reliability Engineer responding to a production incident.
 You must investigate a microservices system and find the root cause of the failure.
@@ -180,7 +184,7 @@ def run_episode(client: OpenAI, task_id: str) -> dict:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user",   "content": f"ALERT: {alert}\n\n{message}"},
         ]
-        max_steps = {"task_easy": 10, "task_medium": 15, "task_hard": 20}[task_id]
+        max_steps = 15  # All 9 incident tasks use same step limit
 
         for step in range(1, max_steps + 1):
             print(f"[EPISODE] Step {step}/{max_steps}", flush=True)

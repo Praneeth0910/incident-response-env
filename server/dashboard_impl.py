@@ -356,7 +356,7 @@ button.stop { background: transparent !important; border: 1px solid var(--red) !
 
 # ── State helpers ─────────────────────────────────────────────────────────────
 
-def _fresh_ui_state(task_id: str = "task_easy") -> Dict[str, Any]:
+def _fresh_ui_state(task_id: str = "task_cpu_spike") -> Dict[str, Any]:
     return {
         "task_id": task_id,
         "alert": "",
@@ -411,7 +411,7 @@ def _render_header_bar() -> str:
 
 
 def _render_footer_bar(state: Dict[str, Any]) -> str:
-    task_meta = TASKS.get(state["task_id"], TASKS["task_easy"])
+    task_meta = TASKS.get(state["task_id"], next(iter(TASKS.values())))
     return f"""
 <div class="status-bar">
   <span class="status-item">ENV: <strong>{html.escape(state['status'])}</strong></span>
@@ -459,7 +459,7 @@ def _render_alert(alert: str) -> str:
 
 
 def _render_status_panel(state: Dict[str, Any]) -> str:
-    task_meta = TASKS.get(state["task_id"], TASKS["task_easy"])
+    task_meta = TASKS.get(state["task_id"], next(iter(TASKS.values())))
     feedback_label, feedback_class, icon = _feedback_meta(state["last_reward"])
     error_block = (
         f'<div class="error-box">{html.escape(str(state["error"]))}</div>'
@@ -558,9 +558,9 @@ def _benchmark_rows(store: Dict[str, Any]) -> List[List[Any]]:
         ts = item.get("task_scores", {})
         rows.append([
             idx, item.get("model", "unknown"),
-            f"{ts.get('task_easy', 0.001):.4f}",
-            f"{ts.get('task_medium', 0.001):.4f}",
-            f"{ts.get('task_hard', 0.001):.4f}",
+            f"{ts.get('task_cpu_spike', 0.001):.4f}",
+            f"{ts.get('task_db_connection_leak', 0.001):.4f}",
+            f"{ts.get('task_redis_memory_eviction', 0.001):.4f}",
             f"{item.get('average_score', 0.001):.4f}",
             f"{item.get('tasks_solved', 0)} / {item.get('tasks_total', len(TASKS))}",
             item.get("timestamp", ""),
@@ -639,10 +639,16 @@ def _render_help_terminal() -> str:
   <div><span class="help-command">  /leaderboard</span><span class="help-desc">Top model rankings, podium</span></div>
   <div><span class="help-command">  /logs</span><span class="help-desc">Raw log stream from last benchmark</span></div>
   <div><span class="help-command">  /help</span><span class="help-desc">This page</span></div>
-  <span class="help-section-title">TASKS</span>
-  <div><span class="help-command">  task_easy</span><span class="help-desc">OOM crash on notification-service (10 steps)</span></div>
-  <div><span class="help-command">  task_medium</span><span class="help-desc">Bad deployment cascading failure (15 steps)</span></div>
-  <div><span class="help-command">  task_hard</span><span class="help-desc">Redis pool exhaustion + CPU red herring (20 steps)</span></div>
+  <span class="help-section-title">TASKS (9 Real Incidents)</span>
+  <div><span class="help-command">  task_cpu_spike</span><span class="help-desc">Auth service CPU hard loop (15 steps)</span></div>
+  <div><span class="help-command">  task_db_connection_leak</span><span class="help-desc">Connection pool exhaustion (15 steps)</span></div>
+  <div><span class="help-command">  task_redis_memory_eviction</span><span class="help-desc">Cache eviction cascade (15 steps)</span></div>
+  <div><span class="help-command">  task_api_rate_limit</span><span class="help-desc">Rate limiting misconfiguration (15 steps)</span></div>
+  <div><span class="help-command">  task_deadlock_order_service</span><span class="help-desc">Database deadlock (15 steps)</span></div>
+  <div><span class="help-command">  task_ssl_cert_expired</span><span class="help-desc">TLS certificate expiration (15 steps)</span></div>
+  <div><span class="help-command">  task_slow_query_postgres</span><span class="help-desc">Query performance degradation (15 steps)</span></div>
+  <div><span class="help-command">  task_auth_service_500</span><span class="help-desc">Auth service internal error (15 steps)</span></div>
+  <div><span class="help-command">  task_k8s_pod_crashloop</span><span class="help-desc">Kubernetes pod crash loop (15 steps)</span></div>
   <span class="help-section-title">AVAILABLE SERVICES</span>
   <div><span class="help-command">  api-gateway</span><span class="help-command">  auth-service</span><span class="help-command">  order-service</span></div>
   <div><span class="help-command">  notification-service</span><span class="help-command">  redis-cache</span><span class="help-command">  postgres-db</span></div>
@@ -664,7 +670,7 @@ def _render_help_terminal() -> str:
   <div><span class="help-command">  Wrong RCA</span><span class="help-desc">+0.001</span></div>
   <div><span class="help-command">  Cumulative range</span><span class="help-desc">[0.01, 0.99]</span></div>
   <span class="help-section-title">ENDPOINTS</span>
-  <div><span class="help-command">  POST /reset</span><span class="help-desc">{"task_id": "task_easy", "seed": 42}</span></div>
+  <div><span class="help-command">  POST /reset</span><span class="help-desc">{"task_id": "task_cpu_spike", "seed": 42}</span></div>
   <div><span class="help-command">  POST /step</span><span class="help-desc">{"action_type": "check_health", "target": "api-gateway"}</span></div>
   <div><span class="help-command">  GET  /state</span><span class="help-desc">Ground truth debug state</span></div>
   <div><span class="help-command">  GET  /grade</span><span class="help-desc">{"score": 0.xxxx}</span></div>
@@ -836,7 +842,7 @@ def create_dashboard(env_instance: Optional[IncidentResponseEnv] = None) -> gr.B
                         gr.Markdown("### ▶ Reset / Start Episode")
                         task_dd = gr.Dropdown(
                             choices=list(TASKS.keys()),
-                            value="task_easy",
+                            value="task_cpu_spike",
                             label="Task",
                         )
                         reset_btn = gr.Button("RESET ENVIRONMENT", variant="primary")
@@ -1046,8 +1052,13 @@ def create_dashboard(env_instance: Optional[IncidentResponseEnv] = None) -> gr.B
                     )
                 # Try to parse scores from log lines and save
                 task_scores = {}
+                all_tasks = [
+                    "task_cpu_spike", "task_db_connection_leak", "task_redis_memory_eviction",
+                    "task_api_rate_limit", "task_deadlock_order_service", "task_ssl_cert_expired",
+                    "task_slow_query_postgres", "task_auth_service_500", "task_k8s_pod_crashloop",
+                ]
                 for line in log_lines:
-                    for tid in ["task_easy", "task_medium", "task_hard"]:
+                    for tid in all_tasks:
                         if tid in line and "score=" in line:
                             try:
                                 score = float(line.split("score=")[1].split()[0])
@@ -1095,8 +1106,13 @@ def create_dashboard(env_instance: Optional[IncidentResponseEnv] = None) -> gr.B
                     )
                 # Try to parse scores from log lines and save
                 task_scores = {}
+                all_tasks = [
+                    "task_cpu_spike", "task_db_connection_leak", "task_redis_memory_eviction",
+                    "task_api_rate_limit", "task_deadlock_order_service", "task_ssl_cert_expired",
+                    "task_slow_query_postgres", "task_auth_service_500", "task_k8s_pod_crashloop",
+                ]
                 for line in log_lines:
-                    for tid in ["task_easy", "task_medium", "task_hard"]:
+                    for tid in all_tasks:
                         if tid in line and "score=" in line:
                             try:
                                 score = float(line.split("score=")[1].split()[0])
