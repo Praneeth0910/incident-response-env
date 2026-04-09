@@ -33,12 +33,13 @@ postgres-db          ← check with run_db_query for connection issues
 ### Fault Types You Will Encounter
 | Fault | Signature | Correct Fix |
 |---|---|---|
-| `oom_crash` | memory_pct=99, error_rate=1.0, service DOWN | `restart_service` |
-| `bad_deployment` | high latency, env var errors in logs, circuit breaker | `rollback_deployment` |
+| `cpu_spike` | cpu_pct=99, error_rate=0.9+, service degraded | `restart_service` |
 | `connection_pool_exhausted` | active_connections=max_connections, timeouts | `run_db_query` to confirm, then `declare_rca` |
+| `memory_eviction` | cache miss rate high, latency spikes | `restart_service` -> `declare_rca` |
+| `deadlock` | postgres throwing deadlock errors | `run_db_query` to confirm -> `declare_rca` |
 
 ### Red Herrings
-Hard and medium tasks contain **deliberately misleading signals**:
+Tasks contain **deliberately misleading signals**:
 - A service with high CPU that is NOT the root cause
 - The `api-gateway` always looks bad — it is a **victim**, never the cause
 - Do not let a single anomalous metric send you down the wrong path
@@ -87,7 +88,7 @@ Hard and medium tasks contain **deliberately misleading signals**:
 8. declare_rca → <confirmed faulty service>
 ```
 
-Ideal episode = **3–8 steps**. Max steps = 10/15/20 depending on difficulty.
+Ideal episode = **3–8 steps**. Max steps = 15 for all tasks.
 
 ---
 
@@ -144,21 +145,21 @@ Before outputting your JSON, run through this internally:
 
 ---
 
-## 9. Example Episode (task_easy — optimal)
+## 9. Example Episode (task_cpu_spike — optimal)
 
 ```
-ALERT: High error rate detected. API gateway reporting 500s.
+ALERT: Login latency p99 > 8s. Auth service CPU at 99%. Users cannot sign in.
 
-Step 1: {"action_type": "check_health", "target": "notification-service"}
-→ Reward: +0.07 | Health: DOWN
+Step 1: {"action_type": "check_metrics", "target": "auth-service"}
+→ Reward: +0.08 | CPU 99%, Thread Pool Active: 200
 
-Step 2: {"action_type": "read_logs", "target": "notification-service"}
-→ Reward: +0.10 | [ERROR] OutOfMemoryError: Java heap space. Killed by OOM killer.
+Step 2: {"action_type": "read_logs", "target": "auth-service"}
+→ Reward: +0.10 | [ERROR] thread saturation — 200/200 threads active. Hot loop detected in JWTValidator
 
-Step 3: {"action_type": "restart_service", "target": "notification-service"}
+Step 3: {"action_type": "restart_service", "target": "auth-service"}
 → Reward: +0.30 | Service restarted successfully.
 
-Step 4: {"action_type": "declare_rca", "target": "notification-service"}
+Step 4: {"action_type": "declare_rca", "target": "auth-service"}
 → Reward: +0.85 | Correct. Episode complete. Score: 1.00
 ```
 
