@@ -52,15 +52,33 @@ action_space:
 
 tasks:
   - id: task_easy
-    name: "OOM crash on notification-service"
+    name: "OOM crash — notification service"
     difficulty: easy
     max_steps: 10
     description: >
       Notification service crashed due to out-of-memory error.
       Symptoms visible in logs within 2-3 targeted actions.
 
+  - id: task_cpu_spike
+    name: "CPU hot-loop — auth service"
+    difficulty: easy
+    max_steps: 10
+    description: >
+      A hot loop in JWT validation is pegging auth-service CPU at 99%.
+      Login requests time out. Restart clears the runaway thread.
+      Based on the 2021 Fastly single-config outage pattern.
+
+  - id: task_disk_full
+    name: "Disk full — postgres WAL overflow"
+    difficulty: easy
+    max_steps: 10
+    description: >
+      The database WAL log grew unbounded after auto-vacuum was disabled.
+      Disk hit 100% — all INSERT/UPDATE fail with ENOSPC.
+      Mirrors the GitHub 2018 24-minute outage.
+
   - id: task_medium
-    name: "Bad deployment cascading failure"
+    name: "Cascading failure from bad deployment"
     difficulty: medium
     max_steps: 15
     description: >
@@ -68,8 +86,27 @@ tasks:
       Auth service appears affected but is a victim, not the cause.
       Requires correlating deployment events across 3 services.
 
+  - id: task_memory_leak
+    name: "Memory leak — notification service GC pauses"
+    difficulty: medium
+    max_steps: 15
+    description: >
+      A memory leak in the email template renderer caused notification-service
+      to grow from 400 MB to 3.8 GB over 2 hours. GC pauses now take 10+ seconds,
+      cascading timeouts to api-gateway. Mirrors the Slack 2022 memory leak incident.
+
+  - id: task_thread_starvation
+    name: "Thread pool exhaustion — auth service OAuth sync calls"
+    difficulty: medium
+    max_steps: 15
+    description: >
+      A new OAuth integration added synchronous HTTP calls inside auth-service's
+      request handler. With 200 concurrent logins, all threads are blocked waiting on I/O.
+      notification-service email queue grows as a symptom.
+      Mirrors Twitter login failures during live events, 2020.
+
   - id: task_hard
-    name: "Redis pool exhaustion + CPU red herring"
+    name: "Redis connection pool exhaustion with red herring"
     difficulty: hard
     max_steps: 20
     description: >
@@ -77,17 +114,38 @@ tasks:
       Order service has a high CPU spike that is a deliberate red herring.
       Requires DB query to confirm pool exhaustion and resist the distraction.
 
+  - id: task_canary_poison
+    name: "Canary misconfiguration — api-gateway strips auth headers"
+    difficulty: hard
+    max_steps: 20
+    description: >
+      A canary deployment of api-gateway v2.1 receives 10% of traffic.
+      The canary build strips the Authorization header before forwarding.
+      Errors appear distributed across order-service and auth-service — wherever
+      the canary routes. The 10% failure rate and canary tag in logs are the tells.
+      Mirrors Etsy 2-hour partial outage affecting 10% of checkout flows.
+
+  - id: task_clock_skew
+    name: "Clock skew — auth service NTP drift causes token rejections"
+    difficulty: hard
+    max_steps: 20
+    description: >
+      NTP daemon on auth-service's host was killed during a kernel update.
+      Auth-service clock drifted 8 minutes ahead. JWTs it issues have future iat timestamps —
+      other services reject them as 'not yet valid'.
+      redis-cache shows high miss rate (wrong TTL). order-service rejects 25% of requests.
+      Mirrors Stripe 4-hour auth outage, 2020.
+
 reward:
   range: (0.01, 0.99)
   dense: true
   description: >
     +0.05 to +0.12 for relevant evidence found;
     +0.005 for redundant action;
-    +0.30 for correct intervention (restart/rollback);
-    +0.05 for wrong service restarted, +0.01 for wrong service rolled back;
+    +0.10 to +0.30 for correct intervention (restart/rollback);
+    Near-zero floor (+0.001) for wrong service actions or wrong RCA;
     +0.50 + time bonus + evidence bonus for correct RCA;
-    +0.001 for wrong RCA;
-    cumulative strictly clamped to [0.01, 0.99].
+    Cumulative strictly clamped to [0.01, 0.99] with late-step decay.
 
 endpoints:
   reset: /reset
