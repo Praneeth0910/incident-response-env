@@ -22,10 +22,12 @@ import os
 import traceback
 from typing import Optional
 
-# Ensure project root is on path so imports work locally and in Docker
+# Ensure both project root and server/ are on path so imports work locally and in Docker
 _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if _root not in sys.path:
-    sys.path.insert(0, _root)
+_server_dir = os.path.dirname(os.path.abspath(__file__))
+for _path in (_root, _server_dir):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import RedirectResponse
@@ -115,7 +117,7 @@ async def tasks():
 
 # ── Mount Gradio dashboard ────────────────────────────────────────────────────
 try:
-    from server.dashboard_impl import create_dashboard
+    from dashboard_impl import create_dashboard
     _gradio_ui = create_dashboard(_env)
     app = gr.mount_gradio_app(_app, _gradio_ui, path="/dashboard")
     print("[INFO] Gradio dashboard mounted at /dashboard", flush=True)
