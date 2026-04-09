@@ -36,5 +36,15 @@ class StepResponse(BaseModel):
 
 
 class ResetRequest(BaseModel):
-    task_id: Literal["task_easy", "task_medium", "task_hard"] = "task_easy"
+    task_id: Literal[
+        "task_easy",
+        "task_cpu_spike",
+        "task_disk_full",
+        "task_medium",
+        "task_memory_leak",
+        "task_thread_starvation",
+        "task_hard",
+        "task_canary_poison",
+        "task_clock_skew",
+    ] = "task_easy"
     seed: Optional[int] = None
