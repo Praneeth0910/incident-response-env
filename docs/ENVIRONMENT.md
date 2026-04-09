@@ -37,18 +37,18 @@ Start a new episode.
 **Request:**
 ```json
 {
-  "task_id": "task_easy",   // "task_easy" | "task_medium" | "task_hard"
-  "seed": 42                // optional int — for reproducible episodes
+  "task_id": "task_cpu_spike",   // Choose from the 9 available tasks
+  "seed": 42                     // optional int — for reproducible episodes
 }
 ```
 
 **Response:**
 ```json
 {
-  "message": "Incident active. Notification service crashed...",
+  "message": "Incident active. A hot loop in JWT validation is pegging auth-service CPU at 99%...",
   "step": 0,
   "done": false,
-  "alert": "ALERT: High error rate detected. API gateway reporting 500s. Latency p99: 3.8s.",
+  "alert": "ALERT: Login latency p99 > 8s. Auth service CPU at 99%. Users cannot sign in.",
   "metrics": null
 }
 ```
@@ -94,16 +94,16 @@ Inspect current episode state (includes hidden ground truth — for debugging on
 **Response:**
 ```json
 {
-  "task_id": "task_easy",
-  "task_name": "OOM crash — single service",
-  "difficulty": "easy",
-  "hidden_fault_service": "notification-service",
-  "hidden_fault_type": "oom_crash",
+  "task_id": "task_cpu_spike",
+  "task_name": "Auth service CPU hard loop",
+  "difficulty": "medium",
+  "hidden_fault_service": "auth-service",
+  "hidden_fault_type": "cpu_spike",
   "step_count": 3,
-  "max_steps": 10,
+  "max_steps": 15,
   "done": false,
   "cumulative_reward": 0.27,
-  "evidence_found": ["logs_fault_svc", "health_fault_svc"]
+  "evidence_found": ["logs_fault_svc", "metrics_fault_svc"]
 }
 ```
 
@@ -139,13 +139,12 @@ List all available tasks.
 **Response:**
 ```json
 {
-  "task_easy": {
-    "name": "OOM crash — single service",
-    "difficulty": "easy",
-    "max_steps": 10,
-    "description": "Notification service crashed due to out-of-memory error."
-  },
-  ...
+  "task_cpu_spike": {
+    "name": "Auth service CPU hard loop",
+    "difficulty": "medium",
+    "max_steps": 15,
+    "description": "A hot loop in JWT validation is pegging auth-service CPU at 99%."
+  }
 }
 ```
 
@@ -153,41 +152,49 @@ List all available tasks.
 
 ## Task Definitions
 
-### task_easy — OOM Crash
-| Property | Value |
-|---|---|
-| Difficulty | Easy |
-| Max Steps | 10 |
-| Ideal Steps | 3–4 |
-| Fault Service | `notification-service` |
-| Fault Type | `oom_crash` |
-| Red Herrings | None |
-| Key Signal | `memory_pct: 99`, `error_rate: 1.0`, health=DOWN |
-| Correct Fix | `restart_service` → `declare_rca` |
-
-### task_medium — Bad Deployment
+### 1. task_cpu_spike — Auth Service CPU hard loop
 | Property | Value |
 |---|---|
 | Difficulty | Medium |
 | Max Steps | 15 |
-| Ideal Steps | 5–7 |
-| Fault Service | `order-service` |
-| Fault Type | `bad_deployment` |
-| Red Herrings | `auth-service` (appears degraded) |
-| Key Signal | Logs: `env var DB_HOST missing`, `circuit breaker open` |
-| Correct Fix | `rollback_deployment` → `declare_rca` |
+| Ideal Steps | 5 |
+| Fault Service | `auth-service` |
+| Fault Type | `cpu_spike` |
+| Red Herrings | None |
+| Key Signal | `cpu_pct: 99`, Logs: `hot loop detected in JWTValidator.validate()` |
+| Correct Fix | `restart_service` → `declare_rca` |
 
-### task_hard — Connection Pool Exhaustion
+### 2. task_db_connection_leak — Database connection pool exhaustion
 | Property | Value |
 |---|---|
-| Difficulty | Hard |
-| Max Steps | 20 |
-| Ideal Steps | 7–10 |
-| Fault Service | `redis-cache` |
+| Difficulty | Medium |
+| Max Steps | 15 |
+| Ideal Steps | 6 |
+| Fault Service | `order-service` |
 | Fault Type | `connection_pool_exhausted` |
-| Red Herrings | `order-service` (high CPU, looks suspicious) |
-| Key Signal | DB query: `active_connections=500/500`, `waiting_queries=847` |
+| Red Herrings | `postgres-db` (appears to be failing) |
+| Key Signal | DB Query: `active_connections: 500` / `waiting_queries: 847` |
 | Correct Fix | `run_db_query` to confirm → `declare_rca` |
+
+### 3. task_redis_memory_eviction — Redis cache memory eviction cascade
+| Property | Value |
+|---|---|
+| Difficulty | Medium |
+| Max Steps | 15 |
+| Ideal Steps | 5 |
+| Fault Service | `redis-cache` |
+| Fault Type | `memory_eviction` |
+| Red Herrings | `api-gateway` |
+| Key Signal | Cache miss rate: `89%`, API latency high |
+| Correct Fix | `restart_service` → `declare_rca` |
+
+### *Additional Tasks Available:*
+* `task_api_rate_limit` (api-gateway misconfiguration)
+* `task_deadlock_order_service` (database deadlock)
+* `task_ssl_cert_expired` (x509 cert expired)
+* `task_slow_query_postgres` (missing db index)
+* `task_auth_service_500` (null pointer exception)
+* `task_k8s_pod_crashloop` (unhandled exception in pod)
 
 ---
 
@@ -275,18 +282,18 @@ In `environment.py`, add to the `TASKS` dict:
 ```python
 "task_yourname": {
     "name": "Human-readable name",
-    "difficulty": "easy" | "medium" | "hard",
-    "max_steps": 10 | 15 | 20,
+    "difficulty": "medium",
+    "max_steps": 15,
     "description": "One sentence description of the fault scenario.",
     "alert": "ALERT: What the on-call engineer sees in their pager.",
     "fault_service": "service-name",        # must be in SERVICES list
-    "fault_type": "oom_crash" | "bad_deployment" | "connection_pool_exhausted",
+    "fault_type": "oom_crash" | "cpu_spike" | "connection_pool_exhausted",
     "red_herrings": [],                     # list of service names
     "ideal_steps": 4,                       # expected optimal step count
 },
 ```
 
-Then update `openenv.yaml` and `Inference.py`'s `TASKS` list.
+Then update `openenv.yaml`, `inference.py`, `models.py` and `dashboard_impl.py`'s `TASKS` lists.
 
 ### Adding a New Fault Type
 
@@ -306,7 +313,7 @@ Add to the `SERVICES` list in `environment.py` and update `openenv.yaml`'s actio
 
 Set `seed` in the `/reset` request for deterministic episodes:
 ```python
-env_reset("task_hard", seed=42)
+env_reset("task_cpu_spike", seed=42)
 ```
 
 This seeds Python's `random` module, making all `_make_metrics()` random values deterministic for that episode.
@@ -318,4 +325,4 @@ This seeds Python's `random` module, making all `_make_metrics()` random values 
 - **Single-instance server:** The FastAPI app uses a single global `IncidentResponseEnv` instance. Concurrent agents will interfere with each other.
 - **No persistent storage:** Benchmark results are not persisted across container restarts by default.
 - **Simulated, not live:** All metrics and logs are procedurally generated — not from a real Kubernetes cluster.
-- **Limited fault diversity:** Currently 3 fault types. See `SKILLS.md` for planned expansions.
+- **Limited fault diversity:** Currently 9 fault types. See `SKILLS.md` for planned expansions.
