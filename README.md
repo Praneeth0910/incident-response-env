@@ -102,113 +102,27 @@ Every action returns a rich observation:
 
 **14 carefully crafted incident scenarios** of increasing difficulty, testing different failure modes and diagnostic reasoning patterns:
 
-### Quick Reference: Sample Tasks
-
 | Task | Difficulty | Max Steps | Description |
 |---|---|---|---|
-| `task_cpu_spike` | Easy | 10 | Auth service CPU hot loop (99% utilization) |
+| `task_cpu_spike` | Easy | 10 | Auth service CPU hot loop |
 | `task_db_connection_leak` | Medium | 15 | Order-service connection pool exhaustion |
-| `task_disk_full` | Easy | 10 | PostgreSQL WAL overflow (ENOSPC) |
-| `task_canary_poison` | Hard | 20 | Canary deployment strips auth headers (10% traffic) |
-| `task_clock_skew` | Hard | 20 | NTP drift causes JWT token rejection |
+| `task_canary_poison` | Hard | 20 | Canary deployment strips auth headers |
 
 *[See full task list in [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#task-definitions)]*
 
----
+### 🟡 Sample Scenario: Bad Deployment Cascade (Red Herring)
+> *"Order service started failing after the 14:30 deployment. Auth service appears degraded."*
 
-## Sample Scenarios
-
-Three example scenarios demonstrating diagnostic patterns:
-
-### 🟢 Example 1: OOM Crash (Single-Service Failure)
-> *"Notification service crashed due to out-of-memory error. The gateway is throwing 500s. Users cannot receive order confirmations."*
-
-A clean, single-service failure. Logs show `OutOfMemoryError`. Health check returns `DOWN`. The optimal agent resolves this in **3–4 steps**.
-
-**Tests:** Basic triage, log reading, correct fix selection (restart ≠ rollback)
-
----
-
-### 🟡 Example 2: Bad Deployment Cascade (Red Herring)
-> *"Order service started failing after the 14:30 deployment. Auth service appears degraded. Cart abandonment rate is spiking."*
-
-A bad deployment on `order-service` cascades to make `auth-service` appear broken — a deliberate red herring. Logs show missing environment variables, not OOM. The correct fix is **rollback**, not restart.
-
-**Tests:** Red herring resistance, fault-type classification, multi-service correlation
-
----
-
-### 🔴 Example 3: Connection Pool Exhaustion (Shared Resource)
-> *"Redis cache is timing out intermittently. Order service shows 90% CPU. Database queries are queuing. P99 latency: 8.2s."*
-
-`order-service` has high CPU — a strong, deliberately misleading signal. The real culprit is `redis-cache` with an exhausted connection pool, confirmable only via `run_db_query`. The agent must resist the CPU red herring and dig into the shared resource layer.
-
-**Tests:** Advanced red herring resistance, DB query reasoning, multi-step hypothesis revision
-
----
-
-
-## 🏗️ System Architecture
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                        HuggingFace Space                          │
-│                                                                    │
-│   ┌─────────────────────┐      ┌──────────────────────────────┐  │
-│   │   Gradio Dashboard  │      │   IncidentResponseEnv        │  │
-│   │   (Interactive UI)  │◄────►│   (State Machine + Rewards)  │  │
-│   └─────────────────────┘      └──────────────────────────────┘  │
-│              │                               ▲                    │
-│              ▼                               │                    │
-│   ┌─────────────────────┐      ┌─────────────────────────────┐  │
-│   │   FastAPI Server    │◄────►│   inference.py              │  │
-│   │   /reset /step      │      │   (LLM Agent Loop)          │  │
-│   │   /grade /health    │      │   OpenAI-compatible client  │  │
-│   │   port :7860        │      └─────────────────────────────┘  │
-│   └─────────────────────┘                   │                    │
-│                                             ▼                    │
-│                              ┌──────────────────────────┐        │
-│                              │  LiteLLM Proxy (Eval)    │        │
-│                              │  HuggingFace Router      │        │
-│                              │  Any OpenAI-compat API   │        │
-│                              └──────────────────────────┘        │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-The environment is a **self-contained FastAPI server** with:
-- A procedurally generated microservices incident simulation
-- A full REST API following the OpenEnv specification
-- An integrated Gradio dashboard for manual interaction and visualization
-- A benchmark runner (`inference.py`) that plugs into any OpenAI-compatible LLM endpoint
+A bad deployment on `order-service` cascades to make `auth-service` appear broken — a deliberate red herring. Logs show missing environment variables. The correct fix is **rollback**.
+**Tests:** Red herring resistance, multi-service correlation.
 
 ---
 
 ## 🔬 The Simulated Microservices System
 
-The agent investigates a 6-service production stack:
+The agent investigates a 6-service production stack comprising an `api-gateway` (always a victim), `auth-service`, `order-service`, `notification-service`, `redis-cache`, and `postgres-db`.
 
-```
-┌─────────────┐    ┌──────────────┐    ┌──────────────────────┐
-│ api-gateway │───►│ auth-service │    │ notification-service │
-│  (VICTIM)   │    │  (may be     │    │  (fault target:      │
-│  always     │    │   affected)  │    │   task_easy)         │
-│  shows 500s │    └──────────────┘    └──────────────────────┘
-└──────┬──────┘
-       │           ┌──────────────┐    ┌──────────────────────┐
-       └──────────►│ order-service│    │    redis-cache       │
-                   │ (fault target│───►│  (fault target:      │
-                   │  task_medium)│    │   task_hard)         │
-                   └──────────────┘    └──────────────────────┘
-                          │
-                          ▼
-                   ┌──────────────┐
-                   │ postgres-db  │
-                   │ (diagnostic  │
-                   │  via query)  │
-                   └──────────────┘
-```
-
-**Key design principle:** The `api-gateway` is **always a victim, never the root cause**. This forces agents to trace causality upstream — a fundamental SRE skill that naive models consistently fail at.
+**Key design principle:** The gateway is **always a victim, never the root cause**. This forces agents to trace causality upstream.
 
 ---
 
@@ -246,198 +160,228 @@ The benchmark cleanly separates agents into four capability tiers:
 
 The gap between Level 2 and Level 3 is **red herring resistance** — the most discriminative signal in this benchmark.
 
+---
+
+## 📊 Getting Started with Baselines
+
+The environment ships with `inference.py`, a reference baseline agent that uses chain-of-thought prompting.
+
+### Supported LLM Endpoints
+
+The baseline works with any OpenAI-compatible endpoint. **OpenAI (GPT-4o) is the recommended baseline.**
+
+#### 🌟 **Quick Start with OpenAI (Recommended)**
+
+**Bash:**
+```bash
+export API_BASE_URL="https://api.openai.com/v1"
+export API_KEY="sk_YOUR_OPENAI_KEY"
+export MODEL_NAME="gpt-4o"
+
+python inference.py
+```
+
+**PowerShell:**
+```powershell
+$env:API_BASE_URL="https://api.openai.com/v1"
+$env:API_KEY="sk_YOUR_OPENAI_KEY"
+$env:MODEL_NAME="gpt-4o"
+
+python inference.py
+```
 
 ---
 
-## 🚀 Quick Start
+#### Other Supported Providers
 
-### Run Locally
+To use other providers, change the `API_BASE_URL`, `API_KEY`, and `MODEL_NAME` accordingly.
 
-```bash
-# Clone and install
+| Provider | Endpoint | Model Example | Setup |
+|---|---|---|---|
+| **OpenAI** ⭐ | `https://api.openai.com/v1` | `gpt-4o`, `gpt-4-turbo` | [Get API key](https://platform.openai.com/api/keys) |
+| **Anthropic (Claude)** | Proxy via LiteLLM | `claude-3-opus` | [Install LiteLLM](https://docs.litellm.ai/docs/) |
+| **HuggingFace Inference** | `https://api-inference.huggingface.co/v1` | `meta-llama/Llama-2-70b` | [Get token](https://huggingface.co/settings/tokens) |
+| **Together AI** | `https://api.together.xyz/v1` | `mistralai/Mixtral-8x7B` | [Get API key](https://together.ai) |
+| **Ollama (local)** | `http://localhost:11434/v1` | Any local model | [Install Ollama](https://ollama.ai) |
+
+---
+
+## 📈 Interpreting Results
+
+### Score Breakdown
+
+Each task returns a score in `[0.0, 1.0]`. Higher is better. Scores are computed as:
+
+$$\text{score} = \text{clamp}(0.01, \text{evidence\_bonus} + \text{fix\_bonus} + \text{rca\_bonus} + \text{time\_bonus}, 0.99)$$
+
+**Breaking it down:**
+
+| Component | Impact | Notes |
+|---|---|---|
+| **Evidence Bonus** | ±0.30 | +0.05–0.12 per unique evidence type (logs, metrics, health, query) |
+| **Fix Bonus** | +0.30 | Given only if the correct service is restarted/rolled back **before** declaring RCA |
+| **RCA Bonus** | +0.50 | Awarded only if declared RCA matches ground truth |
+| **Time Bonus** | 0 to −0.15 | Linear penalty starting at step 10; reaches −0.15 at step budget limit |
+
+**Examples:**
+
+- **Perfect solve (0.95):** Find all 4 evidence types, apply correct fix, declare RCA at step 8
+  - Evidence: +0.12 + 0.10 + 0.08 + 0.05 = +0.35
+  - Fix: +0.30
+  - RCA: +0.50
+  - Time: −0.02 (step 8 vs limit 10)
+  - **Total: 0.95**
+
+- **Late but correct (0.80):** Find 3 evidence types, correct fix at step 14, declare RCA at step 16
+  - Evidence: +0.12 + 0.10 + 0.08 = +0.30
+  - Fix: +0.30
+  - RCA: +0.50
+  - Time: −0.30 (step 16 vs limit 15)
+  - **Total: 0.80**
+
+- **Wrong service fixed (0.55):** Restart auth-service (red herring), then declare correct RCA
+  - Evidence: +0.30
+  - Fix: +0.05 (wrong service, minor credit)
+  - RCA: +0.50
+  - Time: 0
+  - **Total: 0.85** — but clamped or penalties applied
+
+### Interpreting the Leaderboard
+
+The leaderboard ranks agents by **average score across all three tasks:**
+
+```json
+{
+  "agent": "Qwen2.5-72B-Instruct",
+  "scores": {
+    "task_easy": 0.92,
+    "task_medium": 0.68,
+    "task_hard": 0.41
+  },
+  "average": 0.67,
+  "solved": 2,  // tasks with score >= 0.70
+  "rank": 5
+}
+```
+
+**Performance tiers:**
+- **0.85+:** Expert SRE — rare; requires strong long-horizon planning
+- **0.70–0.85:** Competent investigator — solves most easy/medium tasks
+- **0.40–0.70:** Symptom chaser — finds right service but wrong fix or timing
+- **0.15–0.40:** Red herring victim — exhausts all services without focus
+- **0.00–0.15:** Random walker — no coherent strategy
+
+### Common Failure Patterns
+
+- **Exhaustive search without focus:** Checks all 6 services before declaring RCA (high time penalty)
+- **Red herring trap:** Fixes auth-service instead of order-service on `task_medium` (wrong fix bonus, severe penalty)
+- **Premature RCA:** Declares at step 4 with only 1 evidence type (low RCA bonus, but no time penalty — can still score 0.60–0.70)
+- **Missing evidence:** Finds the right service but never gathers supporting logs/metrics (evidence bonus capped, RCA bonus only; total ~0.70)
+
+---
+
+## 🔗 Integration and CI/CD
+
+Embed the benchmark in GitHub Actions to test your agents automatically on every PR.
+
+```yaml
+# .github/workflows/benchmark.yml
+name: Benchmark Agent
+on: [pull_request]
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with: { python-version: '3.11' }
+      - run: pip install -e .
+      - env:
+          API_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MODEL_NAME: gpt-4o
+        run: |
+          uvicorn server.app:app --host 0.0.0.0 --port 7860 &
+          sleep 3
+          python inference.py > benchmark.json
+```
+
+---
+
+## 🚀 Quick Start & Benchmarking
+
+### 1. Local Setup
+
+Clone the repository and start the FastAPI + Gradio server:
+
+**Bash/PowerShell:**
+```sh
 git clone https://github.com/Praneeth0910/incident-response-env
 cd incident-response-env
 pip install -e .
-
-# Start the server
-uvicorn server.app:app --host 0.0.0.0 --port 7860
-
-# Open dashboard
-open http://localhost:7860/dashboard
-```
-
-### Run Benchmark
-
-```bash
-export API_BASE_URL="https://router.huggingface.co/v1"
-export API_KEY="hf_your_token"
-export MODEL_NAME="Qwen/Qwen2.5-72B-Instruct"
-export ENV_BASE_URL="http://localhost:7860"
-
-python inference.py
-```
-
-### Docker
-
-```bash
-docker build -t incident-env .
-docker run -p 7860:7860 \
-  -e API_BASE_URL="https://router.huggingface.co/v1" \
-  -e API_KEY="hf_..." \
-  -e MODEL_NAME="Qwen/Qwen2.5-72B-Instruct" \
-  incident-env
-```
-
----
-
-**What you get:**
-- Interactive Gradio dashboard for manual episode testing
-- FastAPI REST API with full OpenEnv compatibility
-- Real-time episode visualization
-- Benchmark runner UI
-- Leaderboard and statistics
-
----
-
-### **Option 2: Docker (Production)**
-
-```bash
-# Build image
-docker build -t incident-env .
-
-# Run container
-docker run -p 7860:7860 incident-env
-```
-
-The container:
-- Starts uvicorn on port 7860
-- Exposes the Gradio dashboard at `/frontend`
-- Can run `inference.py` for benchmarking
-- Stays alive after inference completes (via `wait` command)
-
----
-
-### **Option 3: Gradio Dashboard Only (UI Testing)**
-
-Run just the Gradio frontend without the FastAPI wrapper:
-
-```bash
-python -m server.gradio_app
-```
-
-Opens at http://localhost:7861 (default Gradio port).
-
----
-
-### **Option 4: API-Only (Programmatic Access)**
-
-For LLM agents or custom clients:
-
-```bash
 uvicorn server.app:app --host 0.0.0.0 --port 7860
 ```
+*Open [http://localhost:7860/dashboard](http://localhost:7860/dashboard) to play manually.*
 
-Then call the REST API:
+### 2. Docker (Production)
+
 ```bash
-# Reset a task
-curl -X POST http://localhost:7860/reset \
-  -H "Content-Type: application/json" \
-  -d '{"task_id": "task_easy"}'
-
-# Execute an action
-curl -X POST http://localhost:7860/step \
-  -H "Content-Type: application/json" \
-  -d '{"action_type": "read_logs", "target": "api-gateway"}'
-
-# Get current grade
-curl http://localhost:7860/grade
-
-# List all tasks
-curl http://localhost:7860/tasks
+docker-compose up --build
 ```
+*See `docker-compose.yml` for port mappings.*
 
----
+### 3. Run the LLM Agent Baseline
 
-## Running Benchmarks
+Configure your environment variables and run `inference.py`.
 
-### **From Python**
-
+**Unix / Bash:**
 ```bash
 export API_BASE_URL="https://api.openai.com/v1"
-export MODEL_NAME="openai/gpt-4o"
-export API_KEY="sk-..."
-export ENV_BASE_URL="http://localhost:7860"
-
+export API_KEY="sk_YOUR_OPENAI_KEY"
+export MODEL_NAME="gpt-4o"
 python inference.py
 ```
 
-This:
-1. Starts uvicorn in the background
-2. Waits for the server to be healthy
-3. Runs benchmarks on all three tasks
-4. Writes results to `benchmark.json`
-5. Keeps the container alive
+**Windows / PowerShell:**
+```powershell
+$env:API_BASE_URL="https://api.openai.com/v1"
+$env:API_KEY="sk_YOUR_OPENAI_KEY"
+$env:MODEL_NAME="gpt-4o"
+python inference.py
+```
 
----
+### 4. Direct API Usage (Programmatic)
 
-## Environment Variables
-
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `API_BASE_URL` | *Required* | LLM endpoint (e.g., OpenAI, HuggingFace) |
-| `MODEL_NAME` | *Required* | Model ID (e.g., `gpt-4o`, `Qwen/Qwen2.5-72B-Instruct`) |
-| `API_KEY` | *Required* | API authentication key |
-| `ENV_BASE_URL` | `http://localhost:7860` | Backend URL (for Docker/remote setups) |
-| `DASHBOARD_PORT` | `7861` | Gradio-only dashboard port |
-
----
-
-## Quick Verification
-
-Test that everything is installed and working:
+Send REST commands directly to evaluate custom agents without `inference.py`:
 
 ```bash
-# Test environment module
-python -c "from environment import IncidentResponseEnv; env = IncidentResponseEnv(); obs = env.reset(); print(f'✓ Environment OK - Alert: {obs.alert[:40]}...')"
+# Start an episode
+curl -X POST http://localhost:7860/reset -H "Content-Type: application/json" -d '{"task_id": "task_easy"}'
 
-# Test server imports
-python -c "from server.app import app; print('✓ Server imports OK')"
+# Take step
+curl -X POST http://localhost:7860/step -H "Content-Type: application/json" -d '{"action_type": "read_logs", "target": "api-gateway"}'
 
-# Test models
-python -c "from models import Action, Observation; print('✓ Models OK')"
-
-# Start server and test health (in separate terminal)
-uvicorn server.app:app --host 0.0.0.0 --port 7860 &
-sleep 2
-curl http://localhost:7860/health
-```
-
-Expected output:
-```json
-{"status":"ok","env":"incident-response-env","version":"1.0.0"}
+# Get score
+curl http://localhost:7860/grade
 ```
 
 ---
 
-## Architecture
+## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────┐
 │   Gradio Web Dashboard          │
-│   (Interactive episode runner)  │
 └────────────┬────────────────────┘
-             │
              ▼
 ┌─────────────────────────────────┐
 │   FastAPI Server (port 7860)    │
-│   - /reset, /step, /grade       │
-│   - /tasks, /state, /health     │
+│   /reset, /step, /grade, /tasks │
 └────────────┬────────────────────┘
-             │
              ▼
 ┌─────────────────────────────────┐
-│  IncidentResponseEnv            │
-│  (Pydantic + State Machine)     │
+│   IncidentResponseEnv           │
+│   (State Machine + Pydantic)    │
 └─────────────────────────────────┘
 ```
 
@@ -478,7 +422,7 @@ incident-response-env/
 | `/state` | GET | Ground truth state (debug only — spoils the answer) |
 | `/tasks` | GET | List all available tasks |
 
-**Example session:**
+**Example session (Bash):**
 ```bash
 # Start episode
 curl -X POST http://localhost:7860/reset \
@@ -494,145 +438,23 @@ curl -X POST http://localhost:7860/step \
 curl http://localhost:7860/grade
 ```
 
----
+**Example session (PowerShell):**
+```powershell
+# Start episode
+$body = @{task_id = "task_hard"} | ConvertTo-Json
+Invoke-WebRequest -Uri "http://localhost:7860/reset" -Method POST -ContentType "application/json" -Body $body
 
-## 🗂️ Code Reference
+# Take action
+$body = @{action_type = "read_logs"; target = "redis-cache"} | ConvertTo-Json
+Invoke-WebRequest -Uri "http://localhost:7860/step" -Method POST -ContentType "application/json" -Body $body
 
-### `models.py` — Pydantic Schemas
-
-Defines the core data contracts shared between the environment, the FastAPI server, and the agent. All request/response bodies are validated against these schemas.
-
-#### `Action`
-The only input the agent sends to `/step`. The `action_type` is a strict literal union — any value outside the allowed set is rejected at validation time.
-
-```python
-class Action(BaseModel):
-    action_type: Literal[
-        "read_logs", "check_metrics", "check_health",
-        "run_db_query", "restart_service",
-        "rollback_deployment", "declare_rca"
-    ]
-    target: str  # service name, or fault type for declare_rca
-```
-
-#### `Observation`
-Returned inside every `/step` response. The `alert` field carries the original pager alert and persists unchanged across all steps — useful as a constant anchor in the agent's conversation history.
-
-```python
-class Observation(BaseModel):
-    message: str                        # NL description of what the action revealed
-    step:    int                        # current step number (1-indexed)
-    done:    bool                       # True when the episode has ended
-    alert:   str                        # original pager alert (constant)
-    metrics: Optional[Dict[str, Any]]   # populated only for check_metrics actions
-```
-
-#### `Reward`
-Scalar reward in `[-1.0, 1.0]` plus a human-readable rationale string — useful for logging and debugging agent decisions.
-
-```python
-class Reward(BaseModel):
-    value:  float   # ge=-1.0, le=1.0
-    reason: str
-```
-
-#### `StepResponse`
-The full envelope returned by `/step`, combining observation, reward, terminal flag, and an open-ended `info` dict for debugging metadata.
-
-```python
-class StepResponse(BaseModel):
-    observation: Observation
-    reward:      Reward
-    done:        bool
-    info:        Dict[str, Any]
-```
-
-#### `ResetRequest`
-Posted to `/reset` to start a new episode. `seed` is optional — supply it for reproducible rollouts during benchmarking.
-
-```python
-class ResetRequest(BaseModel):
-    task_id: Literal["task_easy", "task_medium", "task_hard"] = "task_easy"
-    seed:    Optional[int] = None
+# Get score
+Invoke-WebRequest http://localhost:7860/grade
 ```
 
 ---
 
-### `inference.py` — LLM Agent Baseline
-
-The OpenEnv-compliant benchmark runner. It drives a single LLM through all three tasks sequentially and prints structured logs that the hackathon evaluator parses.
-
-#### Environment Variables (strictly required)
-
-| Variable | Required | Default | Description |
-|---|---|---|---|
-| `API_BASE_URL` | ✅ | — | LiteLLM proxy URL injected by the evaluator |
-| `API_KEY` | ✅ | — | Auth key injected by the evaluator — never hardcode this |
-| `MODEL_NAME` | ❌ | `gpt-4-turbo` | Model identifier passed to the proxy |
-| `ENV_BASE_URL` | ❌ | `http://localhost:7860` | Base URL of the running environment server |
-
-> **Critical:** `inference.py` must never reference `HF_TOKEN`, `OPENAI_API_KEY`, or any personal credentials. The evaluator injects `API_BASE_URL` and `API_KEY` at runtime.
-
-#### Key Functions
-
-| Function | Purpose |
-|---|---|
-| `env_reset(task_id)` | `POST /reset` — initialises a new episode and returns the opening alert |
-| `env_step(action)` | `POST /step` — submits one action and returns `StepResponse` JSON |
-| `env_grade()` | `GET /grade` — retrieves the final scalar score after the episode ends |
-| `parse_action(text)` | Extracts the first valid JSON object from raw LLM output; falls back to `check_metrics api-gateway` on parse failure |
-| `get_llm_action(client, history)` | Calls the proxied LLM with up to 3 retries and exponential back-off; returns `(action_dict, raw_text)` |
-| `run_episode(client, task_id)` | Runs one full episode: reset → step loop → grade; emits `[START]`, `[STEP]`, and `[END]` log lines |
-| `main()` | Entry point — iterates over `["task_easy", "task_medium", "task_hard"]` and prints the final summary table |
-
-#### Log Format (OpenEnv standard)
-
-```
-[START] task=task_medium env=incident-response-env model=Qwen/Qwen2.5-72B-Instruct
-[STEP]  step=1 action={"action_type":"read_logs","target":"order-service"} reward=0.1000 done=false error=null
-[END]   success=true steps=7 score=0.8200 rewards=0.1000,0.0800,...
-```
-
-#### System Prompt
-
-The agent is prompted to act as an expert SRE and respond with **only valid JSON** on every turn. The prompt lists all valid `action_type` values and available services, and instructs the model to investigate before remediating and to call `declare_rca` only when confident.
-
-#### Step Budget per Task
-
-| Task | Max Steps |
-|---|---|
-| `task_easy` | 10 |
-| `task_medium` | 15 |
-| `task_hard` | 20 |
-
----
-
-### `environment.py` — Core RL Environment
-
-The state machine that powers the simulation. It is consumed by the FastAPI server (`server/app.py`) and is never called directly by the agent.
-
-#### Responsibilities
-
-- **Scenario generation** — procedurally constructs a fault scenario (root-cause service, fault type, red-herring services) for each task, optionally seeded for reproducibility
-- **Observation synthesis** — generates realistic log messages, metric payloads, and health-check responses conditioned on the hidden ground truth
-- **Reward computation** — implements the full reward function described in the [Reward Function](#-reward-function) section, including time bonuses, evidence bonuses, and late-step penalties
-- **Episode lifecycle** — tracks `step`, `done`, gathered evidence types, and the chosen fix to produce the final `/grade` score
-
-#### Task–Fault Mapping
-
-| Task | Root-Cause Service | Fault Type | Primary Red Herring |
-|---|---|---|---|
-| `task_easy` | `notification-service` | OOM crash | — |
-| `task_medium` | `order-service` | Bad deployment | `auth-service` degraded |
-| `task_hard` | `redis-cache` | Connection pool exhaustion | `order-service` high CPU |
-
-#### Interaction with `models.py`
-
-`environment.py` consumes `Action` objects and produces `StepResponse` objects (wrapping `Observation` and `Reward`) exactly as typed in `models.py`. The FastAPI layer deserialises incoming JSON into `Action`, passes it to the environment, then serialises the returned `StepResponse` back to JSON — keeping the server layer thin.
-
----
-
-## 🔭 Real-World Impact
+##  Real-World Impact
 
 **Who benefits from solving this benchmark?**
 
