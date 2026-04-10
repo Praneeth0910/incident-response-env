@@ -568,16 +568,15 @@ class IncidentResponseEnv:
 
             # ── rollback_deployment ───────────────────────────────────────────
             elif action.action_type == "rollback_deployment":
-                _rollback_fixes = ("bad_deployment", "canary_misconfiguration",
-                                   "clock_skew", "connection_pool_exhausted", "disk_full")
+                _rollback_fixes = ("bad_deployment", "canary_misconfiguration")
                 if action.target == fault_svc and fault_type in _rollback_fixes:
                     reward_value  = 0.30
                     reward_reason = f"correct rollback — {fault_type} resolved"
                     message       = f"Rolled back {action.target}. Error rate recovering."
                 elif action.target == fault_svc:
                     reward_value  = 0.05
-                    reward_reason = "rollback on fault service but not the right fix"
-                    message       = f"Rollback completed but issue persists."
+                    reward_reason = "rollback on fault service but not the right fix for this fault type"
+                    message       = f"Rolled back {action.target} but issue persists — wrong fix type."
                 else:
                     reward_value  = 0.001
                     reward_reason = "rolled back wrong service — near-zero reward"
