@@ -56,6 +56,9 @@ TASKS = [
     # Hard (max_steps: 20)
     "task_canary_poison",
     "task_clock_skew",
+    
+    # Expert (max_steps: 25)
+    "task_expert",
 ]
 
 SYSTEM_PROMPT = """You are an expert Site Reliability Engineer responding to a production incident.

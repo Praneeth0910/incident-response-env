@@ -285,19 +285,22 @@ other tasks:              +0.01  # "limited signal"
 # restart_service
 correct service + oom:    +0.30  # "correct — oom_crash resolved"
 correct service + wrong:  +0.10  # "restarted but wrong fix type"
-wrong service:            -0.20  # "wrong service — cascading risk"
+wrong service:            +0.001  # "wrong service — cascading risk (minimum floor)"
 
 # rollback_deployment
 correct service + bad_dep: +0.30  # "correct rollback"
 correct service + wrong:   +0.05  # "rollback completed but wrong fix"
-wrong service:             -0.15  # "wrong target"
+wrong service:             +0.001  # "wrong target (minimum floor)"
 
 # any repeated action
-                          -0.05  # "redundant action"
+                          +0.005  # "redundant action (minimum floor)"
 
 # declare_rca
-correct service:   +0.50 + time_bonus + evidence_bonus  (max 1.0)
-wrong service:     +0.00
+correct service:   +0.50 + time_bonus + evidence_bonus  (max 0.99)
+wrong service:     +0.001
+
+# Constraint: all rewards clamped to [0.001, 0.999] per competition rules.
+# Negative rewards replaced with minimum floor.
 ```
 
 ### Time Bonus (declare_rca only)
@@ -316,8 +319,8 @@ evidence_bonus = len(relevant_evidence_found) * 0.03
 ### Time Pressure (after 50% steps used)
 ```python
 if progress > 0.5:
-    time_penalty = -0.01 * ((progress - 0.5) / 0.5)
-    reward_value += time_penalty
+    scale = 0.99 - 0.5 * ((progress - 0.5) / 0.5)
+    reward_value = max(0.001, round(reward_value * scale, 4))
 ```
 
 ### Cumulative Reward

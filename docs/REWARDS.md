@@ -35,14 +35,14 @@ The environment rewards evidence gathering more than blind fixing. Repeated acti
 | `run_db_query` | `postgres-db`, `disk_full` | `+0.12` | Confirms WAL / disk overflow |
 | `run_db_query` | other target or fault type | `+0.01` | Limited signal |
 | `restart_service` | correct service, `oom_crash` | `+0.30` | Correct fix for crash |
-| `restart_service` | correct service, other fault | `+0.10` | Right target, wrong fix |
-| `restart_service` | wrong service | `+0.001` | Near-zero floor |
+| `restart_service` | right target, wrong fix | `+0.10` | 
+| `restart_service` | wrong service | `+0.001 (minimum floor)` |
 | `rollback_deployment` | correct service, `bad_deployment` | `+0.30` | Correct rollback |
 | `rollback_deployment` | correct service, other fault | `+0.05` | Right target, wrong fix |
-| `rollback_deployment` | wrong service | `+0.001` | Near-zero floor |
+| `rollback_deployment` | wrong service | `+0.001 (minimum floor)` |
 | `declare_rca` | correct service | `+0.50 + time bonus + evidence bonus` | Capped at `0.99` |
 | `declare_rca` | wrong service | `+0.001` | Ends episode with a minimal floor |
-| any non-RCA action, repeated | any | `+0.005` | Re-checking is discouraged |
+| any non-RCA action, repeated | any | `+0.005 (minimum floor, no penalty by design)` | Re-checking is discouraged |
 
 ---
 
@@ -66,13 +66,13 @@ Late in the episode, rewards are scaled down once the agent has used more than h
 
 ```python
 scale = 0.99 - 0.5 * ((progress - 0.5) / 0.5)
-reward_value = max(0.01, round(reward_value * scale, 4))
+reward_value = max(0.001, round(reward_value * scale, 4))
 ```
 
 That means:
 - rewards after the halfway point get smaller
-- rewards never drop below `0.01` after late-step scaling
-- cumulative reward is clamped to `[0.01, 0.99]`
+- rewards never drop below `0.001` after late-step scaling
+- cumulative reward is clamped to `[0.001, 0.990]`
 - `grade()` returns `0.001` until the episode is done, then returns the clamped cumulative score
 
 The baseline in `inference.py` marks a run as successful when:
