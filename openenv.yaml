@@ -82,7 +82,7 @@ action_space:
     - rollback_deployment
     - declare_rca
 
-reward_range: [-1.0, 1.0]
+reward_range: [0.001, 0.999]
 
 tasks:
   task_cpu_spike:

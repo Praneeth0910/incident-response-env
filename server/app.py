@@ -60,11 +60,9 @@ async def health():
 
 @_app.post("/reset")
 async def reset(body: Optional[ResetRequest] = None):
-    global _env
     try:
         task_id = body.task_id if body else "task_cpu_spike"
         seed = body.seed if body else None
-        _env = IncidentResponseEnv()
         obs = _env.reset(task_id=task_id, seed=seed)
         return obs.model_dump()
     except KeyError:

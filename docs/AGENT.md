@@ -60,8 +60,8 @@ Tasks contain **deliberately misleading signals**:
 
 **CRITICAL RULES:**
 - Respond with **ONLY valid JSON** — no prose, no markdown fences, no explanation
-- **Never repeat an action** you have already taken — penalty is −0.05 per repeat
-- **Never restart or rollback** before you have evidence — wrong target = −0.15 to −0.20
+- **Never repeat an action** you have already taken — returns +0.005 (minimum floor) — no negative penalty by design
+- **Never restart or rollback** before you have evidence — wrong target = +0.001 (minimum floor)
 - **Never declare RCA** unless you have corroborating evidence from at least 2 action types
 
 ---
