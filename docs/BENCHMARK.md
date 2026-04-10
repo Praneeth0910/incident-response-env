@@ -142,8 +142,8 @@ Each run object stored in `latest_run` and `runs[]` uses this shape:
     "average_score": 0.4791,
     "total_score": 1.4373,
     "tasks_solved": 1,
-    "tasks_total": 9,
-    "solve_rate": 0.111
+    "tasks_total": 14,
+    "solve_rate": 0.071
   }
 }
 ```

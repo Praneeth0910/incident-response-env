@@ -37,7 +37,7 @@ Start a new episode.
 **Request:**
 ```json
 {
-  "task_id": "task_cpu_spike",   // Choose from the 9 available tasks
+  "task_id": "task_cpu_spike",   // Choose from the 14 available tasks
   "seed": 42                     // optional int — for reproducible episodes
 }
 ```
@@ -96,11 +96,11 @@ Inspect current episode state (includes hidden ground truth — for debugging on
 {
   "task_id": "task_cpu_spike",
   "task_name": "Auth service CPU hard loop",
-  "difficulty": "medium",
+  "difficulty": "easy",
   "hidden_fault_service": "auth-service",
   "hidden_fault_type": "cpu_spike",
   "step_count": 3,
-  "max_steps": 15,
+  "max_steps": 10,
   "done": false,
   "cumulative_reward": 0.27,
   "evidence_found": ["logs_fault_svc", "metrics_fault_svc"]
@@ -141,8 +141,8 @@ List all available tasks.
 {
   "task_cpu_spike": {
     "name": "Auth service CPU hard loop",
-    "difficulty": "medium",
-    "max_steps": 15,
+    "difficulty": "easy",
+    "max_steps": 10,
     "description": "A hot loop in JWT validation is pegging auth-service CPU at 99%."
   }
 }
@@ -155,8 +155,8 @@ List all available tasks.
 ### 1. task_cpu_spike — Auth Service CPU hard loop
 | Property | Value |
 |---|---|
-| Difficulty | Medium |
-| Max Steps | 15 |
+| Difficulty | Easy |
+| Max Steps | 10 |
 | Ideal Steps | 5 |
 | Fault Service | `auth-service` |
 | Fault Type | `cpu_spike` |
@@ -187,6 +187,66 @@ List all available tasks.
 | Red Herrings | `api-gateway` |
 | Key Signal | Cache miss rate: `89%`, API latency high |
 | Correct Fix | `restart_service` → `declare_rca` |
+
+### 4. task_disk_full — PostgreSQL WAL overflow (ENOSPC)
+| Property | Value |
+|---|---|
+| Difficulty | Easy |
+| Max Steps | 10 |
+| Ideal Steps | 4 |
+| Fault Service | `postgres-db` |
+| Fault Type | `disk_full` |
+| Red Herrings | None |
+| Key Signal | Logs: `ENOSPC: No space left on device`, Metrics: `disk_used_pct: 100`, `wal_size_gb: 48` |
+| Correct Fix | `declare_rca` (disk_full) |
+
+### 5. task_memory_leak — Notification Service GC Pauses
+| Property | Value |
+|---|---|
+| Difficulty | Medium |
+| Max Steps | 15 |
+| Ideal Steps | 6 |
+| Fault Service | `notification-service` |
+| Fault Type | `memory_leak` |
+| Red Herrings | None |
+| Key Signal | Metrics: `memory_pct: 98`, `gc_pause_ms: 8000-14000`, Logs: `Email Template Cache holding 3.4GB` |
+| Correct Fix | `restart_service` → `declare_rca` |
+
+### 6. task_thread_starvation — Auth Service Thread Pool Exhaustion (OAuth)
+| Property | Value |
+|---|---|
+| Difficulty | Medium |
+| Max Steps | 15 |
+| Ideal Steps | 6 |
+| Fault Service | `auth-service` |
+| Fault Type | `thread_pool_exhausted` |
+| Red Herrings | None |
+| Key Signal | Metrics: `thread_pool_active: 200/200`, `latency_p99_ms: 30000`, Logs: `OAuthIdentityClient timeout after 30000ms` |
+| Correct Fix | `declare_rca` (thread_starvation) |
+
+### 7. task_canary_poison — API Gateway v2.1 Strips Auth Headers
+| Property | Value |
+|---|---|
+| Difficulty | Hard |
+| Max Steps | 20 |
+| Ideal Steps | 5 |
+| Fault Service | `api-gateway` |
+| Fault Type | `canary_misconfiguration` |
+| Red Herrings | `order-service`, `auth-service` (see 401 errors) |
+| Key Signal | 10% of requests fail with 401, Logs: `canary v2.1 stripping Authorization header` |
+| Correct Fix | `declare_rca` (canary_poison) |
+
+### 8. task_clock_skew — NTP Drift, JWT iat Rejected
+| Property | Value |
+|---|---|
+| Difficulty | Hard |
+| Max Steps | 20 |
+| Ideal Steps | 6 |
+| Fault Service | `auth-service` |
+| Fault Type | `clock_skew` |
+| Red Herrings | `redis-cache` (cache miss rate 68%), `order-service` (25% rejections) |
+| Key Signal | Metrics: `clock_drift_seconds: 480`, Logs: `JWT iat is in the future`, `NTP daemon not running` |
+| Correct Fix | `declare_rca` (clock_skew) |
 
 ### *Additional Tasks Available:*
 * `task_api_rate_limit` (api-gateway misconfiguration)

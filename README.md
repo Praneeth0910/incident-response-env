@@ -98,21 +98,29 @@ Every action returns a rich observation:
 | `alert` | string | Original incident alert |
 | `metrics` | object | Service metrics (if requested) |
 
-## Tasks
+## 📋 Task Suite
+
+**14 carefully crafted incident scenarios** of increasing difficulty, testing different failure modes and diagnostic reasoning patterns:
+
+### Quick Reference: Sample Tasks
 
 | Task | Difficulty | Max Steps | Description |
 |---|---|---|---|
-| `task_easy` | Easy | 10 | OOM crash on notification-service |
-| `task_medium` | Medium | 15 | Bad deployment cascading failure |
-| `task_hard` | Hard | 20 | Redis pool exhaustion + CPU red herring |
+| `task_cpu_spike` | Easy | 10 | Auth service CPU hot loop (99% utilization) |
+| `task_db_connection_leak` | Medium | 15 | Order-service connection pool exhaustion |
+| `task_disk_full` | Easy | 10 | PostgreSQL WAL overflow (ENOSPC) |
+| `task_canary_poison` | Hard | 20 | Canary deployment strips auth headers (10% traffic) |
+| `task_clock_skew` | Hard | 20 | NTP drift causes JWT token rejection |
+
+*[See full task list in [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#task-definitions)]*
 
 ---
 
-## 📋 Task Suite
+## Sample Scenarios
 
-Three carefully designed tasks of increasing difficulty, each testing a different class of production failure:
+Three example scenarios demonstrating diagnostic patterns:
 
-### 🟢 task_easy — OOM Crash (Max 10 steps)
+### 🟢 Example 1: OOM Crash (Single-Service Failure)
 > *"Notification service crashed due to out-of-memory error. The gateway is throwing 500s. Users cannot receive order confirmations."*
 
 A clean, single-service failure. Logs show `OutOfMemoryError`. Health check returns `DOWN`. The optimal agent resolves this in **3–4 steps**.
@@ -121,7 +129,7 @@ A clean, single-service failure. Logs show `OutOfMemoryError`. Health check retu
 
 ---
 
-### 🟡 task_medium — Bad Deployment Cascade (Max 15 steps)
+### 🟡 Example 2: Bad Deployment Cascade (Red Herring)
 > *"Order service started failing after the 14:30 deployment. Auth service appears degraded. Cart abandonment rate is spiking."*
 
 A bad deployment on `order-service` cascades to make `auth-service` appear broken — a deliberate red herring. Logs show missing environment variables, not OOM. The correct fix is **rollback**, not restart.
@@ -130,7 +138,7 @@ A bad deployment on `order-service` cascades to make `auth-service` appear broke
 
 ---
 
-### 🔴 task_hard — Connection Pool Exhaustion (Max 20 steps)
+### 🔴 Example 3: Connection Pool Exhaustion (Shared Resource)
 > *"Redis cache is timing out intermittently. Order service shows 90% CPU. Database queries are queuing. P99 latency: 8.2s."*
 
 `order-service` has high CPU — a strong, deliberately misleading signal. The real culprit is `redis-cache` with an exhausted connection pool, confirmable only via `run_db_query`. The agent must resist the CPU red herring and dig into the shared resource layer.
