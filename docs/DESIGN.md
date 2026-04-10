@@ -155,9 +155,9 @@ The default landing view. Communicates the power and purpose of the project imme
 ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
 │ MODELS BENCHMARKED│ │  TASKS SOLVED    │ │   BEST SCORE     │ │   AVG SCORE      │
 │                  │ │                  │ │                  │ │                  │
-│       5          │ │     8 / 15       │ │     1.0000       │ │     0.4791       │
+│       5          │ │     7 / 14       │ │     1.0000       │ │     0.4791       │
 │                  │ │                  │ │                  │ │                  │
-│ across 3 tasks   │ │  53.3% success   │ │  Qwen2.5-72B     │ │  all models      │
+│ across 3 tasks   │ │  50.0% success   │ │  Qwen2.5-72B     │ │  all models      │
 └──────────────────┘ └──────────────────┘ └──────────────────┘ └──────────────────┘
 ```
 
