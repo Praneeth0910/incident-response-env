@@ -7,6 +7,7 @@ requests>=2.32.3
 gradio>=4.0.0
 matplotlib>=3.8.0
 plotly>=5.0.0
+openenv-core>=0.2.0
 
 [test]
 pytest>=7.0

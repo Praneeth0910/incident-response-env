@@ -10,3 +10,8 @@ server/__init__.py
 server/app.py
 server/dashboard_impl.py
 server/gradio_app.py
+test/test_api_tasks.py
+test/test_full_episode.py
+test/test_inference_tasks.py
+test/test_reward_shaping.py
+test/test_tasks.py
