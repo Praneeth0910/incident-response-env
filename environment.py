@@ -11,8 +11,8 @@ TASKS = {
 
     "task_cpu_spike": {
         "name": "Auth service CPU hard loop",
-        "difficulty": "medium",
-        "max_steps": 15,
+        "difficulty": "easy",
+        "max_steps": 10,
         "description": "A hot loop in JWT validation is pegging auth-service CPU at 99%.",
         "alert": "ALERT: Login latency p99 > 8s. Auth service CPU at 99%. Users cannot sign in.",
         "fault_service": "auth-service",
@@ -115,6 +115,66 @@ TASKS = {
         "fault_type": "crash_loop",
         "red_herrings": [],
         "ideal_steps": 5,
+    },
+
+    "task_disk_full": {
+        "name": "Disk full — postgres WAL overflow",
+        "difficulty": "easy",
+        "max_steps": 10,
+        "description": "The database WAL log grew unbounded after auto-vacuum was disabled. Disk hit 100% — all INSERT/UPDATE fail with ENOSPC.",
+        "alert": "ALERT: postgres-db disk at 100%. WAL at 48GB. All write operations failing with ENOSPC.",
+        "fault_service": "postgres-db",
+        "fault_type": "disk_full",
+        "red_herrings": [],
+        "ideal_steps": 4,
+    },
+
+    "task_memory_leak": {
+        "name": "Memory leak — notification service GC pauses",
+        "difficulty": "medium",
+        "max_steps": 15,
+        "description": "A memory leak in the email template renderer caused notification-service to grow from 400MB to 3.8GB. GC pauses now take 10+ seconds, cascading timeouts to api-gateway.",
+        "alert": "ALERT: notification-service heap at 98%. GC pauses >11s. Email delivery stalling. API timeouts cascading.",
+        "fault_service": "notification-service",
+        "fault_type": "memory_leak",
+        "red_herrings": [],
+        "ideal_steps": 6,
+    },
+
+    "task_thread_starvation": {
+        "name": "Thread pool exhaustion — auth service OAuth sync calls",
+        "difficulty": "medium",
+        "max_steps": 15,
+        "description": "A new OAuth integration added synchronous HTTP calls inside auth-service request handler. With 200 concurrent logins, all threads blocked waiting on I/O.",
+        "alert": "ALERT: auth-service thread pool at 100% (200/200 active). Login latency 30s+. OAuth timeout cascade detected.",
+        "fault_service": "auth-service",
+        "fault_type": "thread_pool_exhausted",
+        "red_herrings": [],
+        "ideal_steps": 6,
+    },
+
+    "task_canary_poison": {
+        "name": "Canary misconfiguration — api-gateway v2.1 strips auth headers",
+        "difficulty": "hard",
+        "max_steps": 20,
+        "description": "A canary deployment of api-gateway v2.1 receives 10% of traffic. The canary build strips the Authorization header before forwarding.",
+        "alert": "ALERT: 10% of requests returning 401 Unauthorized. Canary deployment v2.1 detected. Authorization header missing on canary traffic.",
+        "fault_service": "api-gateway",
+        "fault_type": "canary_misconfiguration",
+        "red_herrings": ["order-service", "auth-service"],
+        "ideal_steps": 5,
+    },
+
+    "task_clock_skew": {
+        "name": "Clock skew — auth service NTP drift causes token rejections",
+        "difficulty": "hard",
+        "max_steps": 20,
+        "description": "NTP daemon on auth-service's host was killed. Auth-service clock drifted 8 minutes ahead. JWTs it issues have future iat timestamps — other services reject them.",
+        "alert": "ALERT: 25% of requests returning 401 from order-service. Cache miss rate 68%. JWT iat timestamps in future. Clock skew suspected.",
+        "fault_service": "auth-service",
+        "fault_type": "clock_skew",
+        "red_herrings": ["redis-cache", "order-service"],
+        "ideal_steps": 6,
     },
 }
 
