@@ -5,12 +5,13 @@ FastAPI application — OpenEnv-compliant REST API + Gradio dashboard.
 
 Endpoints
 ---------
-GET  /health     → health check
-POST /reset      → start episode
-POST /step       → take action
-GET  /state      → ground truth state (debug)
-GET  /grade      → episode score  { "score": float }
-GET  /tasks      → list tasks
+GET  /health           → health check
+POST /reset            → start episode
+POST /step             → take action
+GET  /state            → ground truth state (debug)
+GET  /grade            → episode score  { "score": float }
+GET  /tasks            → list tasks with basic metadata
+GET  /tasks/{task_id}  → get full task details (for dashboard detail panel)
 
 The Gradio dashboard is mounted at /dashboard via gr.mount_gradio_app.
 Root / redirects to /dashboard/.
@@ -34,7 +35,7 @@ from fastapi.responses import RedirectResponse
 import gradio as gr
 
 from environment import IncidentResponseEnv, TASKS
-from models import Action, ResetRequest, StepResponse
+from models import Action, ResetRequest, StepResponse, TaskDetail
 
 # ── FastAPI core app ──────────────────────────────────────────────────────────
 _app = FastAPI(
@@ -100,7 +101,7 @@ async def grade():
 
 
 @_app.get("/tasks")
-async def tasks():
+async def task_list():
     return {
         "tasks": [
             {
@@ -108,11 +109,33 @@ async def tasks():
                 "name": meta["name"],
                 "difficulty": meta["difficulty"],
                 "max_steps": meta["max_steps"],
+                "ideal_steps": meta["ideal_steps"],
                 "description": meta["description"],
             }
             for tid, meta in TASKS.items()
         ]
     }
+
+
+@_app.get("/tasks/{task_id}", response_model=TaskDetail)
+async def task_detail(task_id: str):
+    """Get full task metadata including description, difficulty, ideal_steps."""
+    if task_id not in TASKS:
+        raise HTTPException(status_code=404, detail=f"Task not found: {task_id}")
+    
+    meta = TASKS[task_id]
+    return TaskDetail(
+        id=task_id,
+        name=meta["name"],
+        difficulty=meta["difficulty"],
+        max_steps=meta["max_steps"],
+        description=meta["description"],
+        ideal_steps=meta["ideal_steps"],
+        fault_service=meta["fault_service"],
+        fault_type=meta["fault_type"],
+        red_herrings=meta["red_herrings"],
+        alert=meta["alert"],
+    )
 
 
 # ── Mount Gradio dashboard ────────────────────────────────────────────────────
