@@ -20,10 +20,7 @@ from openai import OpenAI
 # ── Config — READ STRICTLY FROM ENV (evaluator injection) ─────────────────────
 print("[BOOTSTRAP] Checking for required environment variables...", flush=True)
 
-if "API_BASE_URL" not in os.environ:
-    print("[CRITICAL] API_BASE_URL not set in environment", file=sys.stderr, flush=True)
-    sys.exit(1)
-API_BASE_URL = os.environ["API_BASE_URL"]
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
 print(f"[BOOTSTRAP] API_BASE_URL = {API_BASE_URL}", flush=True)
 
 if "API_KEY" not in os.environ:
