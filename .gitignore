@@ -1,0 +1,35 @@
+# editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# python packaging artifacts
+*.egg-info/
+dist/
+build/
+__pycache__/
+*.pyc
+.eggs/
+*.egg
+
+# environment & secrets
+.env
+.env.*
+*.local
+
+# test cache
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDEs
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+
+# temporary files
+*.tmp
+*.bak
+*~

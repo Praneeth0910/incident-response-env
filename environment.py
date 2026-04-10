@@ -20,6 +20,9 @@ TASKS = {
         "fault_type": "cpu_spike",
         "red_herrings": [],
         "ideal_steps": 5,
+        "cascade_step": None,
+        "cascade_service": None,
+        "cascade_fault": None,
     },
 
     "task_db_connection_leak": {
@@ -32,6 +35,9 @@ TASKS = {
         "fault_type": "connection_pool_exhausted",
         "red_herrings": ["postgres-db"],
         "ideal_steps": 6,
+        "cascade_step": 9,
+        "cascade_service": "api-gateway",
+        "cascade_fault": "upstream_timeout",
     },
 
     "task_redis_memory_eviction": {
@@ -44,6 +50,9 @@ TASKS = {
         "fault_type": "memory_eviction",
         "red_herrings": ["api-gateway"],
         "ideal_steps": 5,
+        "cascade_step": 9,
+        "cascade_service": "order-service",
+        "cascade_fault": "downstream_victim",
     },
 
     "task_api_rate_limit": {
@@ -56,6 +65,9 @@ TASKS = {
         "fault_type": "rate_limit_exceeded",
         "red_herrings": ["order-service"],
         "ideal_steps": 6,
+        "cascade_step": 9,
+        "cascade_service": "auth-service",
+        "cascade_fault": "rate_limit_victim",
     },
 
     "task_deadlock_order_service": {
@@ -68,6 +80,9 @@ TASKS = {
         "fault_type": "deadlock",
         "red_herrings": ["order-service"],
         "ideal_steps": 6,
+        "cascade_step": 9,
+        "cascade_service": "notification-service",
+        "cascade_fault": "connection_exhausted",
     },
 
     "task_ssl_cert_expired": {
@@ -80,6 +95,9 @@ TASKS = {
         "fault_type": "cert_expired",
         "red_herrings": [],
         "ideal_steps": 4,
+        "cascade_step": 9,
+        "cascade_service": "auth-service",
+        "cascade_fault": "handshake_victim",
     },
 
     "task_slow_query_postgres": {
@@ -92,6 +110,9 @@ TASKS = {
         "fault_type": "slow_query",
         "red_herrings": ["order-service"],
         "ideal_steps": 6,
+        "cascade_step": 9,
+        "cascade_service": "notification-service",
+        "cascade_fault": "query_timeout_victim",
     },
 
     "task_auth_service_500": {
@@ -104,6 +125,9 @@ TASKS = {
         "fault_type": "null_pointer",
         "red_herrings": [],
         "ideal_steps": 5,
+        "cascade_step": 9,
+        "cascade_service": "order-service",
+        "cascade_fault": "auth_timeout_victim",
     },
 
     "task_k8s_pod_crashloop": {
@@ -116,6 +140,9 @@ TASKS = {
         "fault_type": "crash_loop",
         "red_herrings": [],
         "ideal_steps": 5,
+        "cascade_step": 9,
+        "cascade_service": "api-gateway",
+        "cascade_fault": "notification_unavailable_victim",
     },
 
     "task_disk_full": {
@@ -128,6 +155,9 @@ TASKS = {
         "fault_type": "disk_full",
         "red_herrings": [],
         "ideal_steps": 4,
+        "cascade_step": None,
+        "cascade_service": None,
+        "cascade_fault": None,
     },
 
     "task_memory_leak": {
@@ -140,6 +170,9 @@ TASKS = {
         "fault_type": "memory_leak",
         "red_herrings": [],
         "ideal_steps": 6,
+        "cascade_step": 9,
+        "cascade_service": "api-gateway",
+        "cascade_fault": "upstream_timeout",
     },
 
     "task_thread_starvation": {
@@ -152,6 +185,9 @@ TASKS = {
         "fault_type": "thread_pool_exhausted",
         "red_herrings": [],
         "ideal_steps": 6,
+        "cascade_step": 9,
+        "cascade_service": "order-service",
+        "cascade_fault": "auth_timeout_victim",
     },
 
     "task_canary_poison": {
@@ -164,6 +200,9 @@ TASKS = {
         "fault_type": "canary_misconfiguration",
         "red_herrings": ["order-service", "auth-service"],
         "ideal_steps": 5,
+        "cascade_step": 6,
+        "cascade_service": "order-service",
+        "cascade_fault": "canary_victim",
     },
 
     "task_clock_skew": {
@@ -176,6 +215,32 @@ TASKS = {
         "fault_type": "clock_skew",
         "red_herrings": ["redis-cache", "order-service"],
         "ideal_steps": 6,
+        "cascade_step": 6,
+        "cascade_service": "redis-cache",
+        "cascade_fault": "token_cache_miss",
+    },
+
+    "task_expert": {
+        "name": "Multi-root-cause: Redis + Auth config failure",
+        "difficulty": "expert",
+        "max_steps": 25,
+        "description": (
+            "Two independent failures: Redis connection pool exhausted "
+            "AND auth-service misconfigured after canary deploy. Both must be identified."
+        ),
+        "alert": (
+            "ALERT: Login failures 62%. Order completions 0%. "
+            "On-call paged. Multiple cascading signals."
+        ),
+        "fault_service": "redis-cache",
+        "fault_type": "connection_pool_exhausted",
+        "fault_service_2": "auth-service",
+        "fault_type_2": "bad_deployment",
+        "red_herrings": ["order-service", "notification-service"],
+        "ideal_steps": 12,
+        "cascade_step": 8,
+        "cascade_service": "api-gateway",
+        "cascade_fault": "upstream_overload",
     },
 }
 
@@ -431,6 +496,9 @@ class IncidentResponseEnv:
         self._actions_taken:          set            = set()
         self._relevant_evidence_found: set           = set()
         self._run_id:                 str            = ""
+        self._cascade_triggered:      bool           = False
+        self._rca_declared:           bool           = False
+        self._rca_correct:            bool           = False
 
     # ── reset ─────────────────────────────────────────────────────────────────
 
@@ -449,6 +517,9 @@ class IncidentResponseEnv:
         self._actions_taken           = set()
         self._relevant_evidence_found = set()
         self._run_id                  = str(uuid.uuid4())
+        self._cascade_triggered       = False
+        self._rca_declared            = False
+        self._rca_correct             = False
         return Observation(
             message=(
                 f"Incident active. {self._task['description']} "
@@ -590,21 +661,55 @@ class IncidentResponseEnv:
             elif action.action_type == "declare_rca":
                 done            = True
                 self._done      = True
+                self._rca_declared = True
+                
+                # Handle multi-fault scenarios (comma-separated targets)
+                declared_services = set(s.strip() for s in action.target.split(","))
+                fault_services = {fault_svc}
+                if task.get("fault_service_2"):
+                    fault_services.add(task["fault_service_2"])
+                
                 evidence_bonus  = len(self._relevant_evidence_found) * 0.03
                 time_bonus      = max(0.01, (max_steps - self._step_count) / max_steps) * 0.40
 
-                if action.target == fault_svc:
+                # Check if declared services match fault services
+                if declared_services == fault_services:
+                    self._rca_correct = True
                     reward_value  = round(0.50 + time_bonus + evidence_bonus, 3)
-                    reward_value  = min(reward_value, 0.990)
+                    reward_value  = min(reward_value, 0.999)
                     reward_reason = (
                         f"correct RCA: {fault_svc}. "
                         f"time_bonus={time_bonus:.2f} evidence_bonus={evidence_bonus:.2f}"
                     )
-                    message = f"Root cause confirmed: {fault_svc} — {fault_type}. Incident resolved.\n[END]"
+                    message = f"Root cause confirmed: {', '.join(declared_services)} — Incident resolved.\n[END]"
+                elif declared_services & fault_services:
+                    # Partial credit for multi-fault scenarios
+                    self._rca_correct = False
+                    reward_value  = 0.15
+                    reward_reason = f"partial RCA: found {declared_services}, missed {fault_services - declared_services}"
+                    message       = f"Partial credit. You found {declared_services} but missed {fault_services - declared_services}.\n[END]"
                 else:
+                    # Wrong RCA
+                    self._rca_correct = False
                     reward_value  = 0.001
-                    reward_reason = f"wrong RCA. Actual fault: {fault_svc}"
-                    message       = f"Incorrect. The fault was in {fault_svc}, not {action.target}.\n[END]"
+                    reward_reason = f"wrong RCA. Actual faults: {fault_services}"
+                    message       = f"Incorrect. The faults were in {', '.join(fault_services)}, not {action.target}.\n[END]"
+
+        # ── cascade mechanic ──────────────────────────────────────────────────
+        cascade_step = task.get("cascade_step")
+        cascade_svc = task.get("cascade_service")
+        if (
+            cascade_step is not None
+            and not self._cascade_triggered
+            and self._step_count >= cascade_step
+            and not done
+        ):
+            self._cascade_triggered = True
+            cascade_note = (
+                f"\n[CASCADE] {cascade_svc} is now DEGRADED — "
+                f"new errors propagating. Investigate urgently."
+            )
+            message += cascade_note
 
         # ── time pressure after 50% of steps ─────────────────────────────────
         if not done:
@@ -659,7 +764,22 @@ class IncidentResponseEnv:
     # ── grader ────────────────────────────────────────────────────────────────
 
     def grade(self) -> float:
-        """Deterministic grader — returns float strictly in (0.001, 0.999)."""
-        if not self._done:
+        """
+        Deterministic grader. Gated on RCA correctness.
+        - If not done or RCA never declared: 0.001
+        - If RCA declared but wrong: credit partial investigation, cap at 0.30
+        - If RCA declared correctly: scale cumulative reward, capped at [0.001, 0.999]
+        """
+        if not self._done or not self._rca_declared:
             return 0.001
-        return round(max(0.001, min(0.999, self._cumulative_reward)), 4)
+
+        raw = max(0.01, min(0.99, self._cumulative_reward))
+
+        if not self._rca_correct:
+            # Wrong RCA: credit partial investigation effort, cap at 0.30
+            evidence_credit = len(self._relevant_evidence_found) * 0.04
+            return round(min(0.30, max(0.001, evidence_credit)), 4)
+
+        # Correct RCA: return scaled cumulative reward
+        score = max(0.001, min(0.999, raw))
+        return round(score, 4)
