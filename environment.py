@@ -377,6 +377,8 @@ class IncidentResponseEnv:
             raise KeyError(f"Unknown task_id '{task_id}'. Available: {list(TASKS.keys())}")
         if seed is not None:
             random.seed(seed)
+        else:
+            random.seed(42)  # deterministic default for evaluator
         self._task_id                 = task_id
         self._task                    = TASKS[task_id].copy()
         self._step_count              = 0
