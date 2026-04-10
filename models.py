@@ -35,6 +35,20 @@ class StepResponse(BaseModel):
     info: Dict[str, Any]
 
 
+class TaskDetail(BaseModel):
+    """Full task metadata for dashboard detail panels."""
+    id: str = Field(..., description="Task ID")
+    name: str
+    difficulty: Literal["easy", "medium", "hard"]
+    max_steps: int
+    description: str
+    ideal_steps: int
+    fault_service: str
+    fault_type: str
+    red_herrings: list[str]
+    alert: str
+
+
 class ResetRequest(BaseModel):
     task_id: Literal[
         "task_cpu_spike",
