@@ -645,7 +645,7 @@ class IncidentResponseEnv:
             return {"status": "not_started"}
         return {
             "task_id":              self._task_id,
-            "task_name":            self._task["name"],
+            "current_task_name":    self._task["name"],
             "difficulty":           self._task["difficulty"],
             "hidden_fault_service": self._task["fault_service"],
             "hidden_fault_type":    self._task["fault_type"],
@@ -659,7 +659,7 @@ class IncidentResponseEnv:
     # ── grader ────────────────────────────────────────────────────────────────
 
     def grade(self) -> float:
-        """Deterministic grader — returns float strictly in (0.001, 0.990)."""
+        """Deterministic grader — returns float strictly in (0.001, 0.999)."""
         if not self._done:
             return 0.001
-        return round(max(0.001, min(0.990, self._cumulative_reward)), 4)
+        return round(max(0.001, min(0.999, self._cumulative_reward)), 4)
