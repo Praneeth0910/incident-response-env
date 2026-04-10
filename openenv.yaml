@@ -1,4 +1,4 @@
-title: Incident Response Env
+﻿title: Incident Response Env
 emoji: 🚨
 colorFrom: red
 colorTo: blue
@@ -14,37 +14,41 @@ tags:
   - incident-response
   - root-cause-analysis
   - microservices
-  - reinforcement-learning
 
 description: >
   An OpenEnv-compliant RL environment where LLM agents act as on-call SREs,
   investigating simulated microservice failures to identify root causes under
-  time pressure. Features cascading world state, red herrings, multi-tool
-  investigation actions, and deterministic grading gated on RCA correctness.
-
-# ── Interface ─────────────────────────────────────────────────────────────
+  time pressure. Features cascading world state, red herrings, and
+  multi-tool investigation actions.
 
 api:
   reset:
     method: POST
     path: /reset
+    request:
+      type: object
+      fields:
+        task_id:
+          type: string
+        seed:
+          type: integer
+          nullable: true
   step:
     method: POST
     path: /step
+    request:
+      type: object
+      fields:
+        action_type:
+          type: string
+        target:
+          type: string
   grade:
     method: GET
     path: /grade
-  tasks:
-    method: GET
-    path: /tasks
   state:
     method: GET
     path: /state
-  health:
-    method: GET
-    path: /health
-
-# ── Spaces ─────────────────────────────────────────────────────────────────
 
 observation_space:
   type: dict
@@ -78,87 +82,84 @@ action_space:
     - rollback_deployment
     - declare_rca
 
-reward_range: [0.001, 0.999]
-
-# ── Tasks ──────────────────────────────────────────────────────────────────
+reward_range: [-1.0, 1.0]
 
 tasks:
   task_cpu_spike:
     difficulty: easy
     max_steps: 10
     ideal_steps: 5
-
+    description: "Investigate a high CPU utilization alert."
   task_disk_full:
     difficulty: easy
     max_steps: 10
     ideal_steps: 4
-
+    description: "Respond to a disk full alert."
   task_db_connection_leak:
     difficulty: medium
     max_steps: 15
     ideal_steps: 6
-
+    description: "Diagnose a database connection leak."
   task_redis_memory_eviction:
     difficulty: medium
     max_steps: 15
     ideal_steps: 5
-
+    description: "Address Redis memory eviction issues."
   task_api_rate_limit:
     difficulty: medium
     max_steps: 15
     ideal_steps: 6
-
+    description: "Fix API rate limiting causing 429s."
   task_deadlock_order_service:
     difficulty: medium
     max_steps: 15
     ideal_steps: 6
-
+    description: "Resolve thread deadlocks in the order service."
   task_ssl_cert_expired:
     difficulty: medium
     max_steps: 15
     ideal_steps: 4
-
+    description: "Renew expired SSL certificate."
   task_slow_query_postgres:
     difficulty: medium
     max_steps: 15
     ideal_steps: 6
-
+    description: "Optimize a slow Postgres query."
   task_auth_service_500:
     difficulty: medium
     max_steps: 15
     ideal_steps: 5
-
+    description: "Debug a 500 internal server error in auth service."
   task_k8s_pod_crashloop:
     difficulty: medium
     max_steps: 15
     ideal_steps: 5
-
+    description: "Diagnose a Kubernetes pod stuck in a crash loop."
   task_memory_leak:
     difficulty: medium
     max_steps: 15
     ideal_steps: 6
-
+    description: "Find the source of a memory leak."
   task_thread_starvation:
     difficulty: medium
     max_steps: 15
     ideal_steps: 6
-
+    description: "Fix thread starvation issues under load."
   task_canary_poison:
     difficulty: hard
     max_steps: 20
     ideal_steps: 5
-
+    description: "Identify a bad canary deployment causing errors."
   task_clock_skew:
     difficulty: hard
     max_steps: 20
     ideal_steps: 6
-
+    description: "Fix clock skew between services causing token validation failures."
   task_expert:
     difficulty: expert
     max_steps: 25
     ideal_steps: 12
-
-# ── Baselines ──────────────────────────────────────────────────────────────
+    description: "Solve a complex, multi-root cause failure with cascading degradation."
 
 baselines:
   - model: Qwen/Qwen2.5-72B-Instruct
