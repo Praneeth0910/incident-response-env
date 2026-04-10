@@ -21,6 +21,7 @@ class Observation(BaseModel):
     done: bool
     alert: str
     metrics: Optional[Dict[str, Any]] = None
+    info: Optional[Dict[str, Any]] = None
 
 
 class Reward(BaseModel):

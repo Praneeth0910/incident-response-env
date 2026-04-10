@@ -1,4 +1,5 @@
 import random
+import uuid
 from typing import Any, Dict, Optional, Tuple
 from models import Action, Observation, Reward
 
@@ -429,6 +430,7 @@ class IncidentResponseEnv:
         self._cumulative_reward:      float          = 0.0
         self._actions_taken:          set            = set()
         self._relevant_evidence_found: set           = set()
+        self._run_id:                 str            = ""
 
     # ── reset ─────────────────────────────────────────────────────────────────
 
@@ -446,6 +448,7 @@ class IncidentResponseEnv:
         self._cumulative_reward       = 0.0
         self._actions_taken           = set()
         self._relevant_evidence_found = set()
+        self._run_id                  = str(uuid.uuid4())
         return Observation(
             message=(
                 f"Incident active. {self._task['description']} "
@@ -454,6 +457,7 @@ class IncidentResponseEnv:
             step=0,
             done=False,
             alert=self._task["alert"],
+            info={"run_id": self._run_id},
         )
 
     # ── step ──────────────────────────────────────────────────────────────────
@@ -596,11 +600,11 @@ class IncidentResponseEnv:
                         f"correct RCA: {fault_svc}. "
                         f"time_bonus={time_bonus:.2f} evidence_bonus={evidence_bonus:.2f}"
                     )
-                    message = f"Root cause confirmed: {fault_svc} — {fault_type}. Incident resolved."
+                    message = f"Root cause confirmed: {fault_svc} — {fault_type}. Incident resolved.\n[END]"
                 else:
                     reward_value  = 0.001
                     reward_reason = f"wrong RCA. Actual fault: {fault_svc}"
-                    message       = f"Incorrect. The fault was in {fault_svc}, not {action.target}."
+                    message       = f"Incorrect. The fault was in {fault_svc}, not {action.target}.\n[END]"
 
         # ── time pressure after 50% of steps ─────────────────────────────────
         if not done:
@@ -613,7 +617,7 @@ class IncidentResponseEnv:
             if self._step_count >= max_steps:
                 done       = True
                 self._done = True
-                message   += f"\n[SLA BREACHED] Max steps ({max_steps}) reached."
+                message   = message + f"\n[SLA BREACHED] Max steps ({max_steps}) reached.\n[END]"
 
         reward_value              = round(reward_value, 4)
         self._cumulative_reward  += reward_value
