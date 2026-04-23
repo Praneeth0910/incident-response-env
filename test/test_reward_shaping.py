@@ -36,8 +36,8 @@ obs = env.reset('task_canary_poison', seed=42)
 action = Action(action_type='rollback_deployment', target='api-gateway')
 obs, reward, done, info = env.step(action)
 print(f"   Rollback api-gateway: reward={reward.value} ({reward.reason[:50]})")
-print(f"   Expected: 0.30 for correct rollback (fault_type: canary_misconfiguration)")
-if reward.value >= 0.30:
+print(f"   Expected: ~0.07 for blind rollback (0.35 base × 0.2 sequence bonus for no evidence)")
+if reward.value >= 0.05:
     print("   OK - PASS\n")
 else:
     print("   !! - FAIL\n")

@@ -40,7 +40,9 @@ def test_redundant_action_penalised(easy_env):
     a = Action(action_type="check_health", target="api-gateway")
     easy_env.step(a)
     _, rew, _, _ = easy_env.step(a)
-    assert rew.value == 0.005
+    # Redundant actions receive escalating penalty: -0.08 (early) to -0.20 (late)
+    # At step 2 with max_steps=10, progress=0.2 triggers early penalty of -0.08
+    assert rew.value == -0.08
 
 def test_correct_rca_gives_positive_reward(env):
     env.reset("task_cpu_spike", seed=0)
@@ -100,19 +102,3 @@ def test_models_literal_matches_tasks():
     literal_args = set(typing.get_args(hints["task_id"]))
     assert set(TASKS.keys()) == literal_args, \
         f"Mismatch: env has {set(TASKS.keys()) - literal_args}, models has {literal_args - set(TASKS.keys())}"
-def test_models_literal_matches_tasks():
-    from environment import TASKS
-    from models import ResetRequest
-    import inspect, typing
-    hints = typing.get_type_hints(ResetRequest)
-    literal_args = set(typing.get_args(hints['task_id']))
-    assert set(TASKS.keys()) == literal_args, \
-        f'Mismatch: env has {set(TASKS.keys()) - literal_args}, models has {literal_args - set(TASKS.keys())}'
-def test_models_literal_matches_tasks():
-    from environment import TASKS
-    from models import ResetRequest
-    import inspect, typing
-    hints = typing.get_type_hints(ResetRequest)
-    literal_args = set(typing.get_args(hints['task_id']))
-    assert set(TASKS.keys()) == literal_args, \
-        f'Mismatch: env has {set(TASKS.keys()) - literal_args}, models has {literal_args - set(TASKS.keys())}'
