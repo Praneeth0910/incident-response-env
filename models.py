@@ -40,7 +40,7 @@ class TaskDetail(BaseModel):
     """Full task metadata for dashboard detail panels."""
     id: str = Field(..., description="Task ID")
     name: str
-    difficulty: Literal["easy", "medium", "hard"]
+    difficulty: Literal["easy", "medium", "hard", "expert"]
     max_steps: int
     description: str
     ideal_steps: int
