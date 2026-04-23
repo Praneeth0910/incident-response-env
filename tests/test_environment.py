@@ -92,3 +92,27 @@ def test_episode_ends_at_max_steps(env):
         if done:
             break
     assert done is True
+def test_models_literal_matches_tasks():
+    from environment import TASKS
+    from models import ResetRequest
+    import inspect, typing
+    hints = typing.get_type_hints(ResetRequest)
+    literal_args = set(typing.get_args(hints["task_id"]))
+    assert set(TASKS.keys()) == literal_args, \
+        f"Mismatch: env has {set(TASKS.keys()) - literal_args}, models has {literal_args - set(TASKS.keys())}"
+def test_models_literal_matches_tasks():
+    from environment import TASKS
+    from models import ResetRequest
+    import inspect, typing
+    hints = typing.get_type_hints(ResetRequest)
+    literal_args = set(typing.get_args(hints['task_id']))
+    assert set(TASKS.keys()) == literal_args, \
+        f'Mismatch: env has {set(TASKS.keys()) - literal_args}, models has {literal_args - set(TASKS.keys())}'
+def test_models_literal_matches_tasks():
+    from environment import TASKS
+    from models import ResetRequest
+    import inspect, typing
+    hints = typing.get_type_hints(ResetRequest)
+    literal_args = set(typing.get_args(hints['task_id']))
+    assert set(TASKS.keys()) == literal_args, \
+        f'Mismatch: env has {set(TASKS.keys()) - literal_args}, models has {literal_args - set(TASKS.keys())}'

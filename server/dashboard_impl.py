@@ -623,7 +623,13 @@ def _render_podium(store: Dict[str, Any]) -> str:
 
 
 def _render_help_terminal() -> str:
-    return """
+    tasks_html = ""
+    for tid, meta in TASKS.items():
+        diff = meta['difficulty']
+        steps = meta['max_steps']
+        tasks_html += f'<div><span class="help-command">  {tid}</span><span class="help-desc">{meta.get("name", "Task")} ({diff}, {steps} steps)</span></div>\n'
+
+    return f"""
 <div class="help-terminal">
   <div class="help-header">
     <span>INCIDENT-RESPONSE-ENV(1)</span>
@@ -639,16 +645,9 @@ def _render_help_terminal() -> str:
   <div><span class="help-command">  /leaderboard</span><span class="help-desc">Top model rankings, podium</span></div>
   <div><span class="help-command">  /logs</span><span class="help-desc">Raw log stream from last benchmark</span></div>
   <div><span class="help-command">  /help</span><span class="help-desc">This page</span></div>
-  <span class="help-section-title">TASKS (9 Real Incidents)</span>
-  <div><span class="help-command">  task_cpu_spike</span><span class="help-desc">Auth service CPU hard loop (15 steps)</span></div>
-  <div><span class="help-command">  task_db_connection_leak</span><span class="help-desc">Connection pool exhaustion (15 steps)</span></div>
-  <div><span class="help-command">  task_redis_memory_eviction</span><span class="help-desc">Cache eviction cascade (15 steps)</span></div>
-  <div><span class="help-command">  task_api_rate_limit</span><span class="help-desc">Rate limiting misconfiguration (15 steps)</span></div>
-  <div><span class="help-command">  task_deadlock_order_service</span><span class="help-desc">Database deadlock (15 steps)</span></div>
-  <div><span class="help-command">  task_ssl_cert_expired</span><span class="help-desc">TLS certificate expiration (15 steps)</span></div>
-  <div><span class="help-command">  task_slow_query_postgres</span><span class="help-desc">Query performance degradation (15 steps)</span></div>
-  <div><span class="help-command">  task_auth_service_500</span><span class="help-desc">Auth service internal error (15 steps)</span></div>
-  <div><span class="help-command">  task_k8s_pod_crashloop</span><span class="help-desc">Kubernetes pod crash loop (15 steps)</span></div>
+  
+  <span class="help-section-title">TASKS</span>
+{tasks_html}
   <span class="help-section-title">AVAILABLE SERVICES</span>
   <div><span class="help-command">  api-gateway</span><span class="help-command">  auth-service</span><span class="help-command">  order-service</span></div>
   <div><span class="help-command">  notification-service</span><span class="help-command">  redis-cache</span><span class="help-command">  postgres-db</span></div>

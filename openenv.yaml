@@ -46,6 +46,23 @@ api:
   grade:
     method: GET
     path: /grade
+    response:
+      type: object
+      fields:
+        score:
+          type: number
+        rca_declared:
+          type: boolean
+        rca_correct:
+          type: boolean
+        evidence_found:
+          type: array
+        step_count:
+          type: integer
+        max_steps:
+          type: integer
+        task_id:
+          type: string
   state:
     method: GET
     path: /state
