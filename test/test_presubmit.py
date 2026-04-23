@@ -766,9 +766,9 @@ def test_no_hardcoded_api_keys():
 
 def test_end_line_no_score_field():
     src = (REPO_ROOT / "inference.py").read_text()
-    end_lines = [l for l in src.splitlines() if "[END]" in l and "print" in l]
-    for line in end_lines:
-        assert "score=" not in line, f"[END] print has score= field (remove it): {line.strip()}"
+    end_match = re.search(r'f["\'].*\[END\](.*?)["\']', src, re.DOTALL)
+    if end_match:
+        assert "score=" not in end_match.group(1), "[END] print has score= field (remove it)"
 
 def test_done_success_lowercased():
     src = (REPO_ROOT / "inference.py").read_text()
@@ -839,3 +839,27 @@ except ImportError:
 if __name__ == "__main__":
     success = run_all()
     sys.exit(0 if success else 1)
+def test_models_literal_matches_tasks():
+    from environment import TASKS
+    from models import ResetRequest
+    import inspect, typing
+    hints = typing.get_type_hints(ResetRequest)
+    literal_args = set(typing.get_args(hints["task_id"]))
+    assert set(TASKS.keys()) == literal_args, \
+        f"Mismatch: env has {set(TASKS.keys()) - literal_args}, models has {literal_args - set(TASKS.keys())}"
+def test_models_literal_matches_tasks():
+    from environment import TASKS
+    from models import ResetRequest
+    import inspect, typing
+    hints = typing.get_type_hints(ResetRequest)
+    literal_args = set(typing.get_args(hints['task_id']))
+    assert set(TASKS.keys()) == literal_args, \
+        f'Mismatch: env has {set(TASKS.keys()) - literal_args}, models has {literal_args - set(TASKS.keys())}'
+def test_models_literal_matches_tasks():
+    from environment import TASKS
+    from models import ResetRequest
+    import inspect, typing
+    hints = typing.get_type_hints(ResetRequest)
+    literal_args = set(typing.get_args(hints['task_id']))
+    assert set(TASKS.keys()) == literal_args, \
+        f'Mismatch: env has {set(TASKS.keys()) - literal_args}, models has {literal_args - set(TASKS.keys())}'

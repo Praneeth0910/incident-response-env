@@ -93,7 +93,17 @@ async def state():
 @_app.get("/grade")
 async def grade():
     try:
-        return {"score": _env.grade()}
+        score = _env.grade()
+        state = _env.state()
+        return {
+            "score": score,
+            "rca_declared": getattr(_env, "_rca_declared", False),
+            "rca_correct": getattr(_env, "_rca_correct", False),
+            "evidence_found": state.get("evidence_found", []),
+            "step_count": state.get("step_count", 0),
+            "max_steps": state.get("max_steps"),
+            "task_id": state.get("task_id"),
+        }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 

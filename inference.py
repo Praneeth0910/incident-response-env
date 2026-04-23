@@ -36,30 +36,7 @@ print(f"[BOOTSTRAP] MODEL_NAME = {MODEL_NAME}", flush=True)
 print(f"[BOOTSTRAP] ENV_BASE_URL = {ENV_BASE_URL}", flush=True)
 
 BENCHMARK = "incident-response-env"
-TASKS = [
-    # Easy (max_steps: 10)
-    "task_cpu_spike",
-    "task_disk_full",
-    
-    # Medium (max_steps: 15)
-    "task_db_connection_leak",
-    "task_redis_memory_eviction",
-    "task_api_rate_limit",
-    "task_deadlock_order_service",
-    "task_ssl_cert_expired",
-    "task_slow_query_postgres",
-    "task_auth_service_500",
-    "task_k8s_pod_crashloop",
-    "task_memory_leak",
-    "task_thread_starvation",
-    
-    # Hard (max_steps: 20)
-    "task_canary_poison",
-    "task_clock_skew",
-    
-    # Expert (max_steps: 25)
-    "task_expert",
-]
+from task_config import ALL_TASKS as TASKS
 
 SYSTEM_PROMPT = """You are an expert Site Reliability Engineer responding to a production incident.
 You must investigate a microservices system and find the root cause of the failure.
