@@ -99,12 +99,33 @@ Ideal episode = **3–8 steps**. Max steps = 15 for all tasks.
 | `+0.08` to `+0.12` | You found relevant evidence | Continue investigating same service |
 | `+0.05` | Weak signal (gateway logs, health check) | Don't stop here — dig deeper |
 | `0.00` | No signal — wrong service | Pivot to a different service |
-| `−0.05` | Repeated action | You already checked this — move on |
-| `−0.15` to `−0.20` | Wrong fix (restart/rollback wrong service) | Episode recovery is difficult now |
-| `+0.30` | Correct remediation | Proceed to declare_rca immediately |
-| `+0.50` to `+1.00` | Correct RCA declared | Episode complete |
+| `+0.005` | Redundant action (already checked this) | Move on to new actions |
+| `-0.30` | Wrong service restart/rollback | Serious mistake — gather evidence first next time |
+| `-0.40` | Wrong RCA declared | Overconfident diagnosis cost you |
+| `+0.30` | Correct restart/rollback | Good! Proceed to declare_rca |
+| `+0.50` to `+0.99` | Correct RCA declared | Episode complete |
 
-**Time penalty** activates after 50% of steps are used. After that, every step costs an additional small negative reward. Be decisive.
+### 🔑 Sequence Bonus: Rewarding Investigation, Not Just Results
+
+**Key insight:** Two agents can both fix the right service, but **the agent that investigated first gets higher rewards**.
+
+**Sequence Bonus Multipliers:**
+- **2+ evidence types before acting** → `×1.0` multiplier (full reward)
+- **1 evidence type before acting** → `×0.6` multiplier (60% reward)
+- **0 evidence types (blind guess)** → `×0.2` multiplier (20% reward)
+
+**Example:**
+```
+Correct restart of postgres-db = +0.30 base reward
+
+Agent A (checked logs + metrics): +0.30 × 1.0 = +0.30 ✓
+Agent B (checked only logs):      +0.30 × 0.6 = +0.18
+Agent C (guessed blind):          +0.30 × 0.2 = +0.06
+```
+
+**This means:** Spend 3-5 steps gathering evidence, then act decisively. Don't guess immediately, but don't over-investigate either.
+
+**Time pressure** activates after 50% of steps are used. After that, every step costs an additional small negative reward. Be decisive about declaring RCA once you have 2-3 evidence types.
 
 ---
 
