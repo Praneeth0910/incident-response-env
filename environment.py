@@ -224,6 +224,31 @@ TASKS = {
         "cascade_service": "api-gateway",
         "cascade_fault": "upstream_overload",
     },
+    "task_expert_long_horizon": {
+        "name": "Long-horizon cascade: Query degradation with latent secondary fault",
+        "difficulty": "expert",
+        "max_steps": 50,
+        "description": (
+            "LONG-HORIZON TEST (50 steps). postgres-db slow_query causes gradual degradation. "
+            "Quick restart (step ~10) seems to fix it, but introduces a secondary bug in the query planner. "
+            "At step 35+, a cascade triggers in order-service. Agent must track state over extended episode, "
+            "detect the secondary fault, and implement the correct fix. Tests if agent avoids jumping to "
+            "quick conclusions and maintains context across 50-step trajectory."
+        ),
+        "alert": (
+            "ALERT: Order creation latency p99: 500ms → 2000ms → 8000ms (steadily worsening). "
+            "postgres-db query time spiking. Partial order backlog forming."
+        ),
+        "fault_service": "postgres-db",
+        "fault_type": "slow_query",
+        "fault_service_2": None,
+        "fault_type_2": None,
+        "red_herrings": ["api-gateway", "redis-cache"],
+        "ideal_steps": 25,
+        "cascade_step": 35,
+        "cascade_service": "order-service",
+        "cascade_fault": "downstream_timeout",
+    },
 }
 
 SERVICES = [
