@@ -100,15 +100,31 @@ Every action returns a rich observation:
 
 ## 📋 Task Suite
 
-**14 carefully crafted incident scenarios** of increasing difficulty, testing different failure modes and diagnostic reasoning patterns:
+**16 carefully crafted incident scenarios** of increasing difficulty, from shallow (10 steps) to **long-horizon planning** (50 steps):
 
 | Task | Difficulty | Max Steps | Description |
 |---|---|---|---|
 | `task_cpu_spike` | Easy | 10 | Auth service CPU hot loop |
 | `task_db_connection_leak` | Medium | 15 | Order-service connection pool exhaustion |
 | `task_canary_poison` | Hard | 20 | Canary deployment strips auth headers |
+| `task_expert` | Expert | 25 | Multi-root-cause: Redis + Auth failures |
+| **`task_expert_long_horizon`** | **Expert** | **50** | **Long-horizon cascade: Latent secondary fault at step 35+** |
 
 *[See full task list in [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#task-definitions)]*
+
+### 🚀 Long-Horizon Planning Test: `task_expert_long_horizon`
+
+**Addresses Hackathon Theme #2: Long-Horizon Planning**
+
+This 50-step task forces agents beyond shallow next-token reasoning:
+
+- **Initial fault:** Postgres slow query causing gradual degradation
+- **Red herring:** Agent might fix it at step 10–15 with a quick restart
+- **Latent secondary fault:** The quick fix introduces a query planner bug
+- **Cascade trigger:** At step 35+, order-service cascades due to secondary fault
+- **Required skill:** Agent must track state over 50-step trajectory, recognize the latent bug, and implement the correct fix rather than jumping to quick conclusions
+
+**Why this matters:** Tests whether agent can maintain context, plan ahead, and avoid optimization traps. A 50-step episode reveals whether the agent develops genuine SRE reasoning vs. pattern-matching lucky guesses.
 
 ### 🟡 Sample Scenario: Bad Deployment Cascade (Red Herring)
 > *"Order service started failing after the 14:30 deployment. Auth service appears degraded."*

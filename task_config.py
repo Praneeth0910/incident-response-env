@@ -5,5 +5,6 @@ ALL_TASKS = [
     'task_ssl_cert_expired', 'task_slow_query_postgres',
     'task_auth_service_500', 'task_k8s_pod_crashloop',
     'task_memory_leak', 'task_thread_starvation',
-    'task_canary_poison', 'task_clock_skew', 'task_expert'
+    'task_canary_poison', 'task_clock_skew', 'task_expert',
+    'task_expert_long_horizon'
 ]

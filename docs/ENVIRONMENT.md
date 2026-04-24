@@ -248,7 +248,36 @@ List all available tasks.
 | Key Signal | Metrics: `clock_drift_seconds: 480`, Logs: `JWT iat is in the future`, `NTP daemon not running` |
 | Correct Fix | `declare_rca` (clock_skew) |
 
-### *Additional Tasks Available:*
+### 9. task_expert — Multi-Root-Cause: Redis + Auth Failures
+| Property | Value |
+|---|---|
+| Difficulty | Expert |
+| Max Steps | 25 |
+| Ideal Steps | 12 |
+| Fault Services | `redis-cache` (connection_pool_exhausted) AND `auth-service` (bad_deployment) |
+| Cascade | At step 8, `api-gateway` cascades due to upstream overload |
+| Red Herrings | `order-service`, `notification-service` |
+| Key Signal | Login failures 62%, orders failing 0%, multiple cascading signals |
+| Correct Fix | Must identify BOTH redis and auth issues, declare both in RCA |
+| Difficulty | Tests: Multi-root-cause diagnosis, understanding cascading signals |
+
+### 10. task_expert_long_horizon — Long-Horizon Cascade: Latent Secondary Fault (🚀 50 STEPS)
+| Property | Value |
+|---|---|
+| Difficulty | Expert |
+| Max Steps | **50** |
+| Ideal Steps | 25 |
+| Initial Fault | `postgres-db` slow_query causing gradual degradation |
+| Cascade Trigger | **At step 35** (not step 8), `order-service` cascades |
+| Root Cause | Quick restart (step 10–15) seems to fix it, but introduces query planner bug → secondary cascade |
+| Red Herrings | `api-gateway`, `redis-cache` |
+| Key Signal | Order latency steadily increasing: 500ms → 2000ms → 8000ms |
+| **Why Long-Horizon** | **Tests extended state tracking, planning over 50-step trajectory, avoiding quick-fix optimization traps** |
+| Challenge | Agent must distinguish between immediate symptom fix vs. correct structural fix; latent bug manifests much later |
+| Correct Fix | Deep investigation (15–25 steps) to identify secondary root cause, implement correct fix, avoid cascade |
+| Theme Alignment | **Hackathon Theme #2: Long-Horizon Planning** — pushes agents beyond shallow next-token reasoning |
+
+### *Additional Tasks Available (not detailed):*
 * `task_api_rate_limit` (api-gateway misconfiguration)
 * `task_deadlock_order_service` (database deadlock)
 * `task_ssl_cert_expired` (x509 cert expired)
