@@ -285,22 +285,25 @@ other tasks:              +0.01  # "limited signal"
 # restart_service
 correct service + oom:    +0.30  # "correct — oom_crash resolved"
 correct service + wrong:  +0.10  # "restarted but wrong fix type"
-wrong service:            +0.001  # "wrong service — cascading risk (minimum floor)"
+wrong service:            -0.30  # "WRONG TARGET — serious penalty teaches caution"
 
 # rollback_deployment
 correct service + bad_dep: +0.30  # "correct rollback"
-correct service + wrong:   +0.05  # "rollback completed but wrong fix"
-wrong service:             +0.001  # "wrong target (minimum floor)"
+correct service + wrong:   -0.10  # "rollback completed but wrong fix type"
+wrong service:             -0.30  # "WRONG TARGET — serious penalty teaches caution"
 
 # any repeated action
-                          +0.005  # "redundant action (minimum floor)"
+                          +0.005  # "redundant action (minimum reward)"
 
 # declare_rca
-correct service:   +0.50 + time_bonus + evidence_bonus  (max 0.99)
-wrong service:     +0.001
+correct service:   0.50 × seq_bonus + time_bonus + evidence_bonus  (up to 0.999)
+partial match:     +0.10
+wrong service:     -0.40  # Hard penalty for overconfident guessing
 
-# Constraint: all rewards clamped to [0.001, 0.999] per competition rules.
-# Negative rewards replaced with minimum floor.
+# DESIGN PHILOSOPHY: Hard SRE penalties enforce causal reasoning
+# Wrong interventions (wrong service/wrong fix) carry real cost (-0.10 to -0.30)
+# This forces agents to gather evidence before acting, not blind guessing.
+# All rewards are clamped to [0.001, 0.999] per competition rules, so no catastrophic spirals.
 ```
 
 ### Time Bonus (declare_rca only)
@@ -325,17 +328,27 @@ if progress > 0.5:
 
 ### Cumulative Reward
 ```python
-cumulative = sum(all_step_rewards)
-cumulative = max(-1.0, min(1.0, cumulative))  # clamped to [-1, 1]
+cumulative = sum(all_step_rewards)  # can be negative due to hard penalties
+cumulative = max(0.001, min(0.999, cumulative))  # clamped to [0.001, 0.999]
 ```
 
 ### Final Grade
 ```python
-score = max(0.0, min(1.0, cumulative_reward))
-success = score >= 0.6
+score = cumulative_reward (already clamped to [0.001, 0.999])
+success = score >= 0.6  # success threshold
 ```
 
 ---
+
+## Why Hard Penalties?
+
+The hard penalty design (`-0.30` for wrong service, `-0.10` for wrong fix type) creates a high-stakes environment that **meaningfully tests the agent's behavior:**
+
+- **Causal reasoning:** Agents that read logs/metrics first and then act correctly earn high scores. Agents that guess blindly hit hard penalties.
+- **Realism:** In real SRE, wrong actions have exponential costs (cascading failures, customer impact). Our penalties model this authentically.
+- **Stability:** Hard penalties ensure only systematic approaches achieve competitive scores, not random wandering.
+
+The clamping to `[0.001, 0.999]` ensures no single mistake is unrecoverable — agents can learn and succeed in the same episode if they adjust course after a wrong action.
 
 ## Extending the Environment
 
