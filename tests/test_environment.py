@@ -102,3 +102,29 @@ def test_models_literal_matches_tasks():
     literal_args = set(typing.get_args(hints["task_id"]))
     assert set(TASKS.keys()) == literal_args, \
         f"Mismatch: env has {set(TASKS.keys()) - literal_args}, models has {literal_args - set(TASKS.keys())}"
+
+
+# ── Fault identification tests ──────────────────────────────────────────────
+
+def test_easy_fault_is_cpu_spike(env):
+    env.reset("task_cpu_spike", seed=0)
+    state = env.state()
+    assert state["hidden_fault_service"] == "auth-service"
+    assert state["hidden_fault_type"] == "cpu_spike"
+
+def test_hard_fault_is_api_gateway(env):
+    env.reset("task_canary_poison", seed=0)
+    state = env.state()
+    assert state["hidden_fault_service"] == "api-gateway"
+
+def test_restart_correct_service_cpu_spike(env):
+    env.reset("task_cpu_spike", seed=0)
+    _, rew, _, _ = env.step(Action(action_type="restart_service", target="auth-service"))
+    assert rew.value == round(0.35 * 0.2, 4)  # seq_bonus=0.2 (no evidence)
+
+def test_rollback_correct_service_db_leak(env):
+    # task_db_connection_leak is wrong fix type (connection_pool_exhausted needs restart)
+    # Use task_canary_poison for rollback test instead
+    env.reset("task_canary_poison", seed=0)
+    _, rew, _, _ = env.step(Action(action_type="rollback_deployment", target="api-gateway"))
+    assert rew.value == round(0.35 * 0.2, 4)  # seq_bonus=0.2 (no evidence)
