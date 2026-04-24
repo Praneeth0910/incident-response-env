@@ -67,5 +67,6 @@ class ResetRequest(BaseModel):
         "task_canary_poison",
         "task_clock_skew",
         "task_expert",
+        "task_expert_long_horizon",
     ] = "task_cpu_spike"
     seed: Optional[int] = None
