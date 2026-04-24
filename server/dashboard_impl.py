@@ -661,13 +661,13 @@ def _render_help_terminal() -> str:
   <div><span class="help-command">  declare_rca</span><span class="help-desc">Terminal action — declares root cause</span></div>
   <span class="help-section-title">SCORING</span>
   <div><span class="help-command">  Evidence found</span><span class="help-desc">+0.05 to +0.12</span></div>
-  <div><span class="help-command">  Redundant action</span><span class="help-desc">+0.005</span></div>
+  <div><span class="help-command">  Redundant action</span><span class="help-desc">-0.08 to -0.20</span></div>
   <div><span class="help-command">  Correct intervention</span><span class="help-desc">+0.30</span></div>
-  <div><span class="help-command">  Wrong service restarted</span><span class="help-desc">+0.05</span></div>
-  <div><span class="help-command">  Wrong service rolled back</span><span class="help-desc">+0.01</span></div>
-  <div><span class="help-command">  Correct RCA</span><span class="help-desc">+0.50 + time &amp; evidence bonus</span></div>
+  <div><span class="help-command">  Wrong service restarted</span><span class="help-desc">-0.30</span></div>
+  <div><span class="help-command">  Wrong service rolled back</span><span class="help-desc">-0.30</span></div>
+  <div><span class="help-command">  Correct RCA</span><span class="help-desc">+0.35 + seq_bonus (0.2 or 0.0)</span></div>
   <div><span class="help-command">  Wrong RCA</span><span class="help-desc">+0.001</span></div>
-  <div><span class="help-command">  Cumulative range</span><span class="help-desc">[0.01, 0.99]</span></div>
+  <div><span class="help-command">  Cumulative range</span><span class="help-desc">[0.001, 0.999]</span></div>
   <span class="help-section-title">ENDPOINTS</span>
   <div><span class="help-command">  POST /reset</span><span class="help-desc">{"task_id": "task_cpu_spike", "seed": 42}</span></div>
   <div><span class="help-command">  POST /step</span><span class="help-desc">{"action_type": "check_health", "target": "api-gateway"}</span></div>
