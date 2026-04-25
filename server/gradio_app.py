@@ -16,13 +16,19 @@ for _path in (_root, _server_dir):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
-from dashboard_impl import create_dashboard
+from dashboard_impl import create_dashboard, CUSTOM_CSS, UI_THEME
 
 
 def main() -> None:
     port = int(os.getenv("DASHBOARD_PORT", "7861"))
     demo = create_dashboard()
-    demo.launch(server_port=port, share=False, show_error=True)
+    demo.launch(
+        server_port=port,
+        share=False,
+        show_error=True,
+        theme=UI_THEME,
+        css=CUSTOM_CSS,
+    )
 
 
 if __name__ == "__main__":
