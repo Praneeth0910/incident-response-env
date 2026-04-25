@@ -970,7 +970,7 @@ class IncidentResponseEnv:
                     "check_metrics": "get_cluster_metrics",
                     "check_health": "check_runner_status",
                     "run_db_query": "read_consumer_logs",
-                    "restart_service": "restart_consumer_group",
+                    "restart_service": "restart_service",
                     "rollback_deployment": "rollback_workflow",
                     "declare_rca": "declare_rca",
                 }

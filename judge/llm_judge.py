@@ -32,7 +32,7 @@ Return JSON only: {"score": <-1.0 to 1.0>, "feedback": "<1-2 sentences>", "misse
 # Phase detection sets
 _CICD_OBSERVE   = ("check_pipeline_status","check_runner_status","check_action_integrity")
 _CICD_GATHER    = ("read_job_logs","inspect_secret","read_audit_log")
-_CICD_FIX       = ("rollback_workflow","rotate_secret","pin_action_to_sha","isolate_runner")
+_CICD_FIX       = ("rollback_workflow","rotate_secret","pin_action_to_sha","isolate_runner","restart_service")
 
 _KAFKA_OBSERVE  = ("get_cluster_metrics","check_consumer_lag","check_isr_status")
 _KAFKA_LOCATE   = ("inspect_partition","describe_consumer_group","read_broker_logs")
