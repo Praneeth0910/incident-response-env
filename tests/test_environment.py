@@ -23,6 +23,44 @@ def test_reset_clears_prior_state(env):
     assert env._cumulative_reward == 0.0
     assert len(env._actions_taken) == 0
 
+def test_environment_exports_training_api():
+    from environment import Action as ExportedAction, SERVICES
+
+    assert ExportedAction is Action
+    assert "auth-service" in SERVICES
+    assert "postgres-db" in SERVICES
+
+def test_reset_initializes_service_graph_state(env):
+    env.reset("task_cpu_spike", seed=0)
+    state = env.state()
+
+    assert state["service_statuses"]["auth-service"] == "down"
+    assert state["cascade_impact"]["root_services"] == ["auth-service"]
+    assert state["cascade_impact"]["affected_count"] >= 0
+
+def test_metric_checks_update_runtime_service_metrics(env):
+    env.reset("task_cpu_spike", seed=0)
+    env.step(Action(action_type="check_metrics", target="auth-service"))
+    metrics = env.state()["service_metrics"]["auth-service"]
+
+    assert metrics["cpu_pct"] == 99
+    assert metrics["thread_pool_active"] == 200
+
+def test_timed_cascade_updates_service_state(env):
+    env.reset("task_db_connection_leak", seed=0)
+    targets = ["auth-service", "order-service", "postgres-db", "redis-cache", "api-gateway"]
+
+    for index in range(9):
+        env.step(Action(action_type="check_health", target=targets[index % len(targets)]))
+
+    assert env.state()["service_statuses"]["api-gateway"] == "degraded"
+
+def test_wrong_intervention_is_tracked(env):
+    env.reset("task_cpu_spike", seed=0)
+    env.step(Action(action_type="restart_service", target="api-gateway"))
+
+    assert env.state()["wrong_interventions"] == 1
+
 
 # ── step ───────────────────────────────────────────────────────────────────
 
