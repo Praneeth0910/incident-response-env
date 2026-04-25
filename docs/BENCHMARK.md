@@ -1,7 +1,18 @@
 # BENCHMARK.md — Multi-LLM Benchmark Guide
-> **incident-response-env** · How to run, record, and interpret benchmark results · **Phase 1-5 Complete**
+> **incident-response-env** · How to run, record, and interpret benchmark results
+> **Phase 1-5 Complete** + **Phase 4 Domain-Aware Rewards** + **Phase 1-2 Simulator Extensions (Experimental)**
 
 ---
+
+## Current System Status
+
+| Component | Status | Details |
+|---|---|---|
+| **Microservices benchmarking** | ✅ Production | 16 tasks, OpenEnv-compliant, full trajectory logging |
+| **Domain-aware rewards** | ✅ Active | reward.py with CICD/Kafka routing (Phase 4) |
+| **CI/CD simulator** | ⚠️ Experimental | Available in code, reward dispatch ready |
+| **Kafka simulator** | ⚠️ Experimental | Available in code, reward dispatch ready |
+| **Expert agent** | ✅ Ready | Rule-based SFT data generation in training/ |
 
 ## 🆕 Phase 1-5 Enhancements
 

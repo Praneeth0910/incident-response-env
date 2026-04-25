@@ -99,11 +99,19 @@ Unlike benchmarks where the agent sees everything at once, here the agent **only
 - **Service Registry** — Comprehensive dependency graph and service metadata
 - **Cascading Failures** — Multi-level fault propagation for realistic incident patterns
 
-### Dashboard & UI Improvements
-- **Interactive Task Inspector** — Visualize task metadata and difficulty levels
-- **Real-time Reward Tracking** — Monitor cumulative rewards during episodes
-- **Benchmark Leaderboard** — Track model performance across all tasks
-- **Episode State Debugging** — Inspect hidden ground truth for analysis
+### Phase 4 Domain-Aware Reward System
+- **reward.py integration** — Domain-dispatched reward functions (microservices, CI/CD, Kafka)
+- **Evidence tracking** — Domain-specific evidence counters (logs, metrics, integrity checks, lag analysis)
+- **Adaptive penalties** — Redundancy penalties that scale with episode progress (early: gentle, late: harsh)
+- **RCA scoring** — Efficiency bonus + evidence bonus for time-aware reward computation
+
+### Phase 1-2 Experimental Extensions
+- **CI/CD Simulator** — GitHub Actions/GitLab CI incident scenarios (reward dispatch ready, integration pending)
+- **Kafka Simulator** — Message streaming failure patterns (reward dispatch ready, integration pending)
+- **Expert Agent** — Rule-based agent for SFT data generation
+- **Trajectory logging** — Full episode paths saved as JSONL for supervised fine-tuning
+
+See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#-phase-1-2-simulators--experimental-extensions) for simulator roadmap.
 
 ---
 
@@ -429,20 +437,39 @@ curl http://localhost:7860/grade
 
 ## 🏗️ Architecture
 
+The environment is built with a **modular domain-aware architecture** supporting multiple incident types:
+
 ```
-┌─────────────────────────────────┐
-│   Gradio Web Dashboard          │
-└────────────┬────────────────────┘
-             ▼
-┌─────────────────────────────────┐
-│   FastAPI Server (port 7860)    │
-│   /reset, /step, /grade, /tasks │
-└────────────┬────────────────────┘
-             ▼
-┌─────────────────────────────────┐
-│   IncidentResponseEnv           │
-│   (State Machine + Pydantic)    │
-└─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│         User Interface (Gradio Dashboard)               │
+└────────────────────┬────────────────────────────────────┘
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│         FastAPI Server (port 7860)                      │
+│  /reset, /step, /grade, /tasks, /state, /health        │
+└────────────────────┬────────────────────────────────────┘
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│      IncidentResponseEnv (State Machine)                │
+│  Management, task dispatch, trajectory logging          │
+└────────────────────┬────────────────────────────────────┘
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  Reward System (Phase 4 — Domain-Aware)                │
+│  • Reward.py: Domain-dispatched reward functions        │
+│  • EvidenceTracker: Multi-type evidence collection      │
+│  • Support for: CI/CD, Kafka, Microservices             │
+└────────────────────┬────────────────────────────────────┘
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  Simulators (Phase 1-2 Extensions — Experimental)      │
+│  • cicd_simulator.py: GitHub Actions/GitLab CI          │
+│  • kafka_simulator.py: Apache Kafka state machine       │
+│  • Status: Integrated into reward.py, optional in env   │
+└─────────────────────────────────────────────────────────┘
+
+Current (Phase 1-5): Microservices incidents only.
+Phase 1-2 simulators available via reward.py routing (see docs/ for roadmap).
 ```
 
 ---
@@ -451,21 +478,48 @@ curl http://localhost:7860/grade
 
 ```
 incident-response-env/
-├── environment.py          # Core RL environment — state machine, rewards
-├── models.py               # Pydantic schemas (Action, Observation, Reward)
-├── inference.py            # LLM agent baseline + OpenEnv-compliant runner
+├── environment.py          # Core RL environment (primary)
+├── models.py               # Pydantic data models
+├── reward.py               # Domain-aware reward functions
+├── task_config.py          # Task ID registry
+├── inference.py            # Benchmark inference script
+├── benchmark_runner.py     # Full benchmark orchestration
+├── app.py                  # Gradio entry point
+├── start.sh                # Docker startup script
+│
 ├── server/
-│   ├── app.py              # FastAPI application (uvicorn entry point)
-│   ├── dashboard_impl.py   # Gradio UI — interactive episode runner
+│   ├── app.py              # FastAPI application + REST endpoints
+│   ├── dashboard_impl.py   # Gradio terminal dashboard
 │   └── gradio_app.py       # Standalone Gradio launcher
+│
+├── judge/
+│   ├── llm_client.py       # LLM client (OpenAI / Anthropic / mock)
+│   └── llm_judge.py        # Adversarial phase-aware judge
+│
+├── simulators/
+│   ├── cicd_simulator.py   # CI/CD pipeline state machine
+│   └── kafka_simulator.py  # Kafka cluster state machine
+│
+├── training/
+│   ├── expert_agent.py     # Rule-based expert for SFT data generation
+│   └── generate_data.py    # SFT dataset generator
+│
+├── tasks/
+│   ├── cicd_tasks.json     # CI/CD task definitions
+│   └── kafka_tasks.json    # Kafka task definitions
+│
 ├── docs/
 │   ├── AGENT.md            # Full agent operating manual
 │   ├── ENVIRONMENT.md      # Complete environment specification
 │   ├── BENCHMARK.md        # Multi-model benchmarking guide
 │   ├── REWARDS.md          # Reward engineering deep dive
-│   └── SKILLS.md           # Agent capability taxonomy + prompt engineering
+│   ├── SKILLS.md           # Agent capability taxonomy + prompt engineering
+│   └── blog.md             # Technical blog — SRE AI innovation story
+│
+├── sft_data/               # Generated training trajectories
+├── test/                   # Integration tests
+├── tests/                  # Unit tests (pytest)
 ├── Dockerfile              # Production container
-├── start.sh                # Container startup (server + inference)
 ├── openenv.yaml            # OpenEnv specification manifest
 └── README.md               # This file
 ```

@@ -31,13 +31,15 @@ Complete technical reference for the environment. Read this before building a cu
 
 Base URL: `http://localhost:7860` (local) or your HF Space URL.
 
+**Current Status:** Microservices tasks only. CI/CD and Kafka simulators available via `reward.py` routing (experimental).
+
 ### `POST /reset`
 Start a new episode.
 
 **Request:**
 ```json
 {
-  "task_id": "task_cpu_spike",   // Choose from the 16 available tasks
+  "task_id": "task_cpu_spike",   // Choose from the 16 available microservices tasks
   "seed": 42                     // optional int — for reproducible episodes
 }
 ```
@@ -185,6 +187,55 @@ export TIMEOUT_SECONDS=30                            # Request timeout
 - **Provider failover** — Falls back to secondary provider on persistent failure
 - **Timeout handling** — Configurable request timeout with fallback
 - **Rate-limit aware** — Detects and respects rate-limit headers
+
+---
+
+## 🔮 Phase 1-2 Simulators — Experimental Extensions
+
+The codebase includes experimental simulators for additional incident domains. These are **not yet integrated into the main environment** but are available for future use and currently power the domain-aware reward system backend.
+
+### CI/CD Pipeline Simulator (`simulators/cicd_simulator.py`)
+
+Models GitHub Actions / GitLab CI incidents from real-world 2025–2026 failure patterns:
+
+**Fault Types:**
+- Secret rotation failures / token expiration
+- Corrupt action (tag overwrite, dependency injection)
+- OIDC authentication misconfig
+- Runner queue saturation (pickup latency)
+- Workflow injection via PR title
+- Audit log manipulation
+
+**Incident Examples:**
+- "Deploy job failed: Cannot authenticate to AWS (OIDC audience mismatch)"
+- "Build stuck in queue: 47 jobs ahead, no idle runners"
+- "Production secret not found: last rotation failed 2 hours ago"
+
+**Status:** Reward dispatch ready. Awaiting simulator ↔ environment integration.
+
+### Kafka Cluster Simulator (`simulators/kafka_simulator.py`)
+
+Models Apache Kafka message streaming incidents:
+
+**Fault Types:**
+- Consumer lag buildup (lagging consumers)
+- Partition replica imbalance  
+- Broker rebalance storm
+- Schema incompatibility
+- Message loss/ non-idempotent producer
+
+**Incident Examples:**
+- "Orders topic consumer lag: 1.2M messages. Processing stalled."
+- "Partition 3 stuck during rebalance. No leader elected (>10s)"
+- "Schema evolution incompatibility detected. Deserialization errors 98%"
+
+**Status:** Reward dispatch ready. Awaiting simulator ↔ environment integration.
+
+### Future Roadmap
+
+- **Phase 1-3:** Integrate CI/CD simulator into environment
+- **Phase 1-4:** Integrate Kafka simulator into environment
+- **Phase 1-5:** Multi-incident scenarios (mixing CI/CD + Kafka failures)
 
 ---
 
