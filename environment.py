@@ -1,7 +1,141 @@
+"""
+Incident Response RL Environment — Clean Architecture
+=======================================================
+Supports both training and benchmarking modes with trajectory logging.
+
+Architecture:
+  BaseIncidentEnv (abstract)
+    ├─ TrainingEnv: Dense logging, trajectory storage
+    └─ BenchmarkEnv: Silent, deterministic evaluation
+
+Backward Compatibility:
+  IncidentResponseEnv = TrainingEnv  # Old code still works
+
+Data Structures:
+  - TrajectoryStep: Single step in episode (obs, action, reward, next_obs, info)
+  - EpisodeTrajectory: Complete episode with metadata (id, task, steps, score)
+
+Usage:
+  # Training mode with trajectory logging
+  env = TrainingEnv()
+  obs = env.reset("task_cpu_spike", seed=42)
+  obs, reward, done, info = env.step(Action(...))
+  trajectory = env.get_trajectory()
+
+  # Benchmarking mode (silent, strict grading)
+  env = BenchmarkEnv()
+  obs = env.reset("task_cpu_spike", seed=42)
+  score = env.grade()
+
+  # Backward compatibility
+  env = IncidentResponseEnv()  # Works! Alias to TrainingEnv
+"""
+
+from __future__ import annotations
+
 import random
 import uuid
-from typing import Any, Dict, Optional, Tuple
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import Any, Dict, Optional, Set, Tuple
+
 from models import Action, Observation, Reward
+
+
+# ── Data Structures for Trajectory Logging ────────────────────────────────────
+
+@dataclass
+class TrajectoryStep:
+    """
+    Single step in an episode trajectory.
+
+    Attributes:
+        step_num: Step number (0-indexed)
+        observation: Agent's observation before action
+        action: Action taken
+        reward: Reward signal received
+        next_observation: Observation after action
+        done: Whether episode terminated
+        info: Additional info (service metrics, hidden fault, etc.)
+    """
+
+    step_num: int
+    observation: Observation
+    action: Action
+    reward: Reward
+    next_observation: Observation
+    done: bool
+    info: Dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to serializable dict."""
+        return {
+            "step_num": self.step_num,
+            "observation": self.observation.model_dump() if hasattr(self.observation, 'model_dump') else dict(self.observation),
+            "action": self.action.model_dump() if hasattr(self.action, 'model_dump') else dict(self.action),
+            "reward": {
+                "value": self.reward.value,
+                "reason": self.reward.reason,
+            },
+            "next_observation": self.next_observation.model_dump() if hasattr(self.next_observation, 'model_dump') else dict(self.next_observation),
+            "done": self.done,
+            "info": self.info,
+        }
+
+
+@dataclass
+class EpisodeTrajectory:
+    """
+    Complete episode trajectory for training/analysis.
+
+    Attributes:
+        episode_id: Unique episode identifier
+        task_id: Which task was played
+        seed: Random seed used
+        steps: List of TrajectoryStep objects
+        cumulative_reward: Total episode reward
+        final_score: Final grade (0.001-0.999)
+        success: Whether agent achieved score >= 0.6
+        duration_seconds: Episode wall-clock time
+    """
+
+    episode_id: str
+    task_id: str
+    seed: Optional[int]
+    steps: list[TrajectoryStep] = field(default_factory=list)
+    cumulative_reward: float = 0.0
+    final_score: float = 0.001
+    success: bool = False
+    duration_seconds: float = 0.0
+
+    def add_step(self, step: TrajectoryStep) -> None:
+        """Add step to trajectory."""
+        self.steps.append(step)
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to serializable dict."""
+        return {
+            "episode_id": self.episode_id,
+            "task_id": self.task_id,
+            "seed": self.seed,
+            "steps": [s.to_dict() for s in self.steps],
+            "cumulative_reward": self.cumulative_reward,
+            "final_score": self.final_score,
+            "success": self.success,
+            "duration_seconds": self.duration_seconds,
+            "num_steps": len(self.steps),
+        }
+
+    @property
+    def num_steps(self) -> int:
+        """Number of steps in trajectory."""
+        return len(self.steps)
+
+    @property
+    def actions_taken(self) -> list[str]:
+        """Sequence of action types."""
+        return [f"{s.action.action_type}({s.action.target})" for s in self.steps]
+
 
 # ── Task definitions ──────────────────────────────────────────────────────────
 
@@ -548,42 +682,131 @@ def _compute_redundancy_penalty(step_count: int, max_steps: int) -> float:
         return -0.20   # late repeat: serious punishment — be decisive!
 
 
-class IncidentResponseEnv:
+# ═══════════════════════════════════════════════════════════════════════════════
+# ███  POWERFUL REWARD FUNCTION — DESIGNED FOR SHARP RL LEARNING  ███
+# ═══════════════════════════════════════════════════════════════════════════════
+#
+# PHILOSOPHY:
+#   A reward function that makes an LLM learn to think like a real SRE.
+#   Four principles drive every design decision:
+#
+#   1. REAL PENALTIES for wrong actions — bad guesses must HURT, not give
+#      tiny positive floors. The LLM must learn that wrong interventions
+#      have consequences.
+#
+#   2. SEQUENCE MATTERS — rewards increase if the agent follows the correct
+#      investigation order: observe → hypothesize → confirm → fix → declare.
+#      Skipping steps or acting randomly gets lower rewards even if "correct".
+#
+#   3. EFFICIENCY BONUS — solving it faster with fewer steps gives a bigger
+#      reward. Every wasted step costs the agent.
+#
+#   4. EXPLORATION DIVERSITY — checking the same thing twice gets punished
+#      harder as the episode progresses, teaching the agent to be decisive.
 
-    def __init__(self):
-        self._task:                    Optional[dict] = None
-        self._task_id:                 Optional[str]  = None
-        self._step_count:              int            = 0
-        self._done:                    bool           = False
-        self._cumulative_reward:       float          = 0.0
-        self._actions_taken:           set            = set()
-        self._relevant_evidence_found: set            = set()
-        self._run_id:                  str            = ""
-        self._cascade_triggered:       bool           = False
-        self._rca_declared:            bool           = False
-        self._rca_correct:             bool           = False
-        # New: track wrong interventions for grade penalty
-        self._wrong_interventions:     int            = 0
+
+class BaseIncidentEnv(ABC):
+    """
+    Abstract base class for incident response environments.
+
+    Provides core functionality:
+    - Episode state management (reset, step, grade)
+    - Reward computation and clamping
+    - Action validation
+    - Trajectory tracking
+
+    Subclasses must implement:
+    - _log_step(): Custom logging behavior per mode
+    """
+
+    def __init__(self, mode: str = "train"):
+        """
+        Initialize environment.
+
+        Args:
+            mode: "train" (dense logging) or "bench" (minimal logging)
+        """
+        assert mode in ("train", "bench"), f"Invalid mode: {mode}"
+        self._mode = mode
+        self._task: Optional[Dict[str, Any]] = None
+        self._task_id: Optional[str] = None
+        self._step_count: int = 0
+        self._cumulative_reward: float = 0.0
+        self._done: bool = False
+        self._actions_taken: Set[str] = set()
+        self._relevant_evidence_found: Set[str] = set()
+        self._run_id: str = ""
+        self._cascade_triggered: bool = False
+        self._rca_declared: bool = False
+        self._rca_correct: bool = False
+        self._wrong_interventions: int = 0
+
+        # Trajectory tracking (training mode)
+        self._current_trajectory: Optional[EpisodeTrajectory] = None
+        self._episode_steps: list[TrajectoryStep] = []
+
+    @abstractmethod
+    def _log_step(
+        self,
+        step_num: int,
+        observation: Observation,
+        action: Action,
+        reward: Reward,
+        done: bool,
+    ) -> None:
+        """
+        Log step information per environment mode.
+
+        TrainingEnv: Stores trajectory step
+        BenchmarkEnv: Silent logging
+        """
+        pass
 
     def reset(self, task_id: str = "task_cpu_spike", seed: Optional[int] = None) -> Observation:
+        """
+        Reset environment and start new episode.
+
+        Args:
+            task_id: Task to run (e.g., "task_cpu_spike")
+            seed: Random seed for reproducibility
+
+        Returns:
+            Initial observation
+
+        Raises:
+            KeyError: If task_id not in TASKS
+        """
         if task_id not in TASKS:
             raise KeyError(f"Unknown task_id '{task_id}'. Available: {list(TASKS.keys())}")
+
         if seed is not None:
             random.seed(seed)
         else:
             random.seed(42)
-        self._task_id                  = task_id
-        self._task                     = TASKS[task_id].copy()
-        self._step_count               = 0
-        self._done                     = False
-        self._cumulative_reward        = 0.0
-        self._actions_taken            = set()
-        self._relevant_evidence_found  = set()
-        self._run_id                   = str(uuid.uuid4())
-        self._cascade_triggered        = False
-        self._rca_declared             = False
-        self._rca_correct              = False
-        self._wrong_interventions      = 0
+
+        # Reset state
+        self._task_id = task_id
+        self._task = TASKS[task_id].copy()
+        self._step_count = 0
+        self._cumulative_reward = 0.0
+        self._done = False
+        self._actions_taken = set()
+        self._relevant_evidence_found = set()
+        self._run_id = str(uuid.uuid4())
+        self._cascade_triggered = False
+        self._rca_declared = False
+        self._rca_correct = False
+        self._wrong_interventions = 0
+
+        # Initialize trajectory (training mode)
+        if self._mode == "train":
+            self._current_trajectory = EpisodeTrajectory(
+                episode_id=str(uuid.uuid4()),
+                task_id=task_id,
+                seed=seed,
+            )
+            self._episode_steps = []
+
         return Observation(
             message=(
                 f"Incident active. {self._task['description']} "
@@ -596,26 +819,63 @@ class IncidentResponseEnv:
         )
 
     def step(self, action: Action) -> Tuple[Observation, Reward, bool, Dict[str, Any]]:
+        """
+        Take one step in the environment.
+
+        Args:
+            action: Action to take
+
+        Returns:
+            (observation, reward, done, info)
+
+        Raises:
+            RuntimeError: If called before reset()
+        """
         if self._done or self._task is None:
             raise RuntimeError("Episode finished. Call reset() first.")
 
         self._step_count += 1
-        task       = self._task
-        fault_svc  = task["fault_service"]
-        fault_type = task["fault_type"]
-        max_steps  = task["max_steps"]
+        task = self._task
+        max_steps = task["max_steps"]
 
-        reward_value  = 0.0
+        # Compute reward and observation
+        observation, reward, done, info = self._compute_step(action)
+
+        # Update cumulative reward
+        self._cumulative_reward += reward.value
+        self._cumulative_reward = round(max(-1.0, min(1.0, self._cumulative_reward)), 4)
+        self._done = done
+
+        # Log step (mode-specific)
+        self._log_step(self._step_count, observation, action, reward, done)
+
+        # Add cumulative reward to info
+        info["cumulative_reward"] = self._cumulative_reward
+
+        return observation, reward, done, info
+
+    def _compute_step(self, action: Action) -> Tuple[Observation, Reward, bool, Dict]:
+        """
+        Compute reward, observation, and terminal state.
+
+        This is the core reward logic (extracted from original step method).
+        """
+        task = self._task
+        fault_svc = task["fault_service"]
+        fault_type = task["fault_type"]
+        max_steps = task["max_steps"]
+
+        reward_value = 0.0
         reward_reason = "no signal"
-        message       = ""
-        metrics       = None
-        done          = False
+        message = ""
+        metrics = None
+        done = False
 
         action_key = f"{action.action_type}:{action.target}"
 
         # ── REDUNDANT ACTION — escalating penalty ─────────────────────────────
         if action_key in self._actions_taken and action.action_type != "declare_rca":
-            reward_value  = _compute_redundancy_penalty(self._step_count, max_steps)
+            reward_value = _compute_redundancy_penalty(self._step_count, max_steps)
             reward_reason = (
                 f"redundant action — already checked {action.target} with "
                 f"{action.action_type}. Penalty escalates as episode progresses."
@@ -630,81 +890,85 @@ class IncidentResponseEnv:
 
             # ── read_logs ─────────────────────────────────────────────────────
             if action.action_type == "read_logs":
-                logs    = _make_logs(action.target, task,
-                                     self._cascade_triggered,
-                                     task.get("cascade_service", ""))
+                logs = _make_logs(
+                    action.target,
+                    task,
+                    self._cascade_triggered,
+                    task.get("cascade_service", ""),
+                )
                 message = f"Logs from {action.target}:\n{logs}"
 
                 if action.target == fault_svc:
-                    reward_value  = 0.15
+                    reward_value = 0.15
                     reward_reason = f"strong evidence found in {action.target} logs"
                     self._relevant_evidence_found.add("logs_fault_svc")
                 elif action.target == "api-gateway":
-                    reward_value  = 0.05
+                    reward_value = 0.05
                     reward_reason = "gateway logs show symptoms — it is a VICTIM, not root cause"
                     self._relevant_evidence_found.add("logs_gateway")
                 else:
-                    # Checking irrelevant services costs a small penalty
-                    reward_value  = -0.02
+                    reward_value = -0.02
                     reward_reason = f"no relevant signal in {action.target} logs — wasted step"
 
             # ── check_metrics ─────────────────────────────────────────────────
             elif action.action_type == "check_metrics":
-                met     = _make_metrics(action.target, task,
-                                        self._cascade_triggered,
-                                        task.get("cascade_service", ""))
+                met = _make_metrics(
+                    action.target,
+                    task,
+                    self._cascade_triggered,
+                    task.get("cascade_service", ""),
+                )
                 metrics = {action.target: met}
                 message = f"Metrics for {action.target}: {met}"
 
                 if action.target == fault_svc:
-                    reward_value  = 0.12
+                    reward_value = 0.12
                     reward_reason = "fault service metrics show anomaly — strong signal"
                     self._relevant_evidence_found.add("metrics_fault_svc")
                 elif action.target in task["red_herrings"]:
-                    # Penalise falling for red herrings — this is the key learning signal
-                    reward_value  = -0.05
+                    reward_value = -0.05
                     reward_reason = (
                         f"{action.target} looks suspicious but is NOT the root cause — "
                         f"red herring! Learn to cross-reference with logs before acting."
                     )
                 else:
-                    reward_value  = -0.03
+                    reward_value = -0.03
                     reward_reason = f"metrics for {action.target} are normal — wasted step"
 
             # ── check_health ──────────────────────────────────────────────────
             elif action.action_type == "check_health":
                 if action.target == fault_svc and fault_type in ("oom_crash", "disk_full", "cpu_spike"):
-                    status        = "DOWN"
-                    reward_value  = 0.10
+                    status = "DOWN"
+                    reward_value = 0.10
                     reward_reason = "found downed service — clear signal"
                     self._relevant_evidence_found.add("health_fault_svc")
                 elif action.target == fault_svc:
-                    status        = "DEGRADED"
-                    reward_value  = 0.08
+                    status = "DEGRADED"
+                    reward_value = 0.08
                     reward_reason = "service degraded — investigate further with logs/metrics"
                     self._relevant_evidence_found.add("health_fault_svc")
                 elif action.target == "api-gateway":
-                    status        = "DEGRADED"
-                    reward_value  = 0.02
+                    status = "DEGRADED"
+                    reward_value = 0.02
                     reward_reason = "api-gateway is always a victim — check upstream services"
                 else:
-                    status        = random.choice(["UP", "UP", "DEGRADED"])
-                    reward_value  = -0.02
+                    status = random.choice(["UP", "UP", "DEGRADED"])
+                    reward_value = -0.02
                     reward_reason = f"{action.target} appears healthy — wasted step"
                 message = f"Health check {action.target}: {status}"
 
             # ── run_db_query ──────────────────────────────────────────────────
             elif action.action_type == "run_db_query":
-                result  = _make_db_query_result(task)
+                result = _make_db_query_result(task)
                 message = f"DB query result:\n{result}"
 
-                if fault_type in ("connection_pool_exhausted", "disk_full", "deadlock") \
-                        and "postgres" in action.target.lower():
-                    reward_value  = 0.18
+                if (fault_type in ("connection_pool_exhausted", "disk_full", "deadlock")
+                        and "postgres" in action.target.lower()):
+                    reward_value = 0.18
                     reward_reason = "DB query confirms root cause — highest-value evidence type"
                     self._relevant_evidence_found.add("db_query")
                 else:
-                    reward_value  = -0.05
+                    reward_value = -0.05
                     reward_reason = (
                         "DB query ran but this fault is not database-related — "
                         "wrong tool for this task. Read logs first."
@@ -712,16 +976,13 @@ class IncidentResponseEnv:
 
             # ── restart_service ───────────────────────────────────────────────
             elif action.action_type == "restart_service":
-                _restart_fixes  = ("oom_crash", "cpu_spike", "memory_leak",
-                                    "thread_pool_exhausted", "crash_loop",
-                                    "null_pointer")
-                seq_bonus = _compute_sequence_bonus(
-                    self._relevant_evidence_found, "restart_service"
-                )
+                _restart_fixes = ("oom_crash", "cpu_spike", "memory_leak",
+                                  "thread_pool_exhausted", "crash_loop", "null_pointer")
+                seq_bonus = _compute_sequence_bonus(self._relevant_evidence_found, "restart_service")
 
                 if action.target == fault_svc and fault_type in _restart_fixes:
-                    base_reward   = 0.35
-                    reward_value  = round(base_reward * seq_bonus, 4)
+                    base_reward = 0.35
+                    reward_value = round(base_reward * seq_bonus, 4)
                     reward_reason = (
                         f"correct service restarted — {fault_type} resolved. "
                         f"Sequence bonus: {seq_bonus:.1f}x "
@@ -729,7 +990,7 @@ class IncidentResponseEnv:
                     )
                     message = f"{action.target} restarted successfully. Error rate dropping."
                 elif action.target == fault_svc:
-                    reward_value  = -0.10
+                    reward_value = -0.10
                     reward_reason = (
                         f"restarted {action.target} but restart is wrong fix for {fault_type}. "
                         f"Use rollback_deployment for deployment faults."
@@ -737,8 +998,7 @@ class IncidentResponseEnv:
                     message = f"{action.target} restarted but issue persists — wrong fix type."
                     self._wrong_interventions += 1
                 else:
-                    # REAL PENALTY for wrong service — this is what teaches the LLM
-                    reward_value  = -0.30
+                    reward_value = -0.30
                     reward_reason = (
                         f"WRONG SERVICE restarted — {action.target} is not the fault. "
                         f"This is a serious error. Gather evidence before acting."
@@ -749,22 +1009,19 @@ class IncidentResponseEnv:
             # ── rollback_deployment ───────────────────────────────────────────
             elif action.action_type == "rollback_deployment":
                 _rollback_fixes = ("bad_deployment", "canary_misconfiguration",
-                                   "cert_expired", "rate_limit_exceeded",
-                                   "slow_query", "clock_skew")
-                seq_bonus = _compute_sequence_bonus(
-                    self._relevant_evidence_found, "rollback_deployment"
-                )
+                                   "cert_expired", "rate_limit_exceeded", "slow_query", "clock_skew")
+                seq_bonus = _compute_sequence_bonus(self._relevant_evidence_found, "rollback_deployment")
 
                 if action.target == fault_svc and fault_type in _rollback_fixes:
-                    base_reward   = 0.35
-                    reward_value  = round(base_reward * seq_bonus, 4)
+                    base_reward = 0.35
+                    reward_value = round(base_reward * seq_bonus, 4)
                     reward_reason = (
                         f"correct rollback — {fault_type} resolved. "
                         f"Sequence bonus: {seq_bonus:.1f}x"
                     )
                     message = f"Rolled back {action.target}. Error rate recovering."
                 elif action.target == fault_svc:
-                    reward_value  = -0.10
+                    reward_value = -0.10
                     reward_reason = (
                         f"rollback on {action.target} but rollback is wrong fix for {fault_type}. "
                         f"Use restart_service for runtime faults."
@@ -772,7 +1029,7 @@ class IncidentResponseEnv:
                     message = f"Rolled back {action.target} but issue persists — wrong fix type."
                     self._wrong_interventions += 1
                 else:
-                    reward_value  = -0.30
+                    reward_value = -0.30
                     reward_reason = (
                         f"WRONG SERVICE rolled back — {action.target} is not the fault. "
                         f"Serious error. Read logs and metrics before intervening."
@@ -782,28 +1039,26 @@ class IncidentResponseEnv:
 
             # ── declare_rca ───────────────────────────────────────────────────
             elif action.action_type == "declare_rca":
-                done            = True
-                self._done      = True
+                done = True
+                self._done = True
                 self._rca_declared = True
 
                 declared_services = set(s.strip() for s in action.target.split(","))
-                fault_services    = {fault_svc}
+                fault_services = {fault_svc}
                 if task.get("fault_service_2"):
                     fault_services.add(task["fault_service_2"])
 
-                seq_bonus      = _compute_sequence_bonus(
-                    self._relevant_evidence_found, "declare_rca"
-                )
+                seq_bonus = _compute_sequence_bonus(self._relevant_evidence_found, "declare_rca")
                 evidence_bonus = len(self._relevant_evidence_found) * 0.04
-                time_bonus     = max(0.0, (max_steps - self._step_count) / max_steps) * 0.40
+                time_bonus = max(0.0, (max_steps - self._step_count) / max_steps) * 0.40
 
                 if declared_services == fault_services:
                     self._rca_correct = True
-                    rca_base      = 0.50
-                    reward_value  = round(
+                    rca_base = 0.50
+                    reward_value = round(
                         rca_base * seq_bonus + time_bonus + evidence_bonus, 3
                     )
-                    reward_value  = min(reward_value, 0.999)
+                    reward_value = min(reward_value, 0.999)
                     reward_reason = (
                         f"CORRECT RCA: {fault_svc}! "
                         f"evidence_bonus={evidence_bonus:.2f} "
@@ -813,16 +1068,15 @@ class IncidentResponseEnv:
                     message = f"Root cause confirmed: {', '.join(declared_services)} — Incident resolved.\n[END]"
                 elif declared_services & fault_services:
                     self._rca_correct = False
-                    reward_value  = 0.10
+                    reward_value = 0.10
                     reward_reason = (
                         f"partial RCA: found {declared_services}, "
                         f"missed {fault_services - declared_services}"
                     )
                     message = f"Partial credit. You found {declared_services} but missed {fault_services - declared_services}.\n[END]"
                 else:
-                    # REAL PENALTY for confident wrong answer
                     self._rca_correct = False
-                    reward_value  = -0.40
+                    reward_value = -0.40
                     reward_reason = (
                         f"WRONG RCA declared. Actual fault: {fault_services}. "
                         f"You declared: {declared_services}. "
@@ -832,7 +1086,7 @@ class IncidentResponseEnv:
 
         # ── cascade mechanic ──────────────────────────────────────────────────
         cascade_step = task.get("cascade_step")
-        cascade_svc  = task.get("cascade_service")
+        cascade_svc = task.get("cascade_service")
         if (cascade_step is not None and not self._cascade_triggered
                 and self._step_count >= cascade_step and not done):
             self._cascade_triggered = True
@@ -846,24 +1100,19 @@ class IncidentResponseEnv:
         if not done:
             progress = self._step_count / max_steps
             if progress > 0.5:
-                # Scale DOWN positive rewards (urgency), scale UP negative rewards
                 if reward_value > 0:
-                    scale        = 0.99 - 0.4 * ((progress - 0.5) / 0.5)
+                    scale = 0.99 - 0.4 * ((progress - 0.5) / 0.5)
                     reward_value = round(reward_value * scale, 4)
                 else:
-                    # Negative rewards get WORSE under time pressure
-                    scale        = 1.0 + 0.3 * ((progress - 0.5) / 0.5)
+                    scale = 1.0 + 0.3 * ((progress - 0.5) / 0.5)
                     reward_value = round(reward_value * scale, 4)
 
             if self._step_count >= max_steps:
-                done       = True
+                done = True
                 self._done = True
-                message    = message + f"\n[SLA BREACHED] Max steps ({max_steps}) reached.\n[END]"
+                message = message + f"\n[SLA BREACHED] Max steps ({max_steps}) reached.\n[END]"
 
-        reward_value             = round(reward_value, 4)
-        self._cumulative_reward += reward_value
-        # Cumulative clamped to [-1.0, 1.0] during episode
-        self._cumulative_reward  = round(max(-1.0, min(1.0, self._cumulative_reward)), 4)
+        reward_value = round(reward_value, 4)
 
         obs = Observation(
             message=message,
@@ -872,40 +1121,46 @@ class IncidentResponseEnv:
             alert=self._task["alert"] if self._task else "",
             metrics=metrics,
         )
-        rew  = Reward(value=max(-1.0, min(1.0, reward_value)), reason=reward_reason)
+        rew = Reward(value=max(-1.0, min(1.0, reward_value)), reason=reward_reason)
         info = {
-            "step":                  self._step_count,
-            "cumulative_reward":     self._cumulative_reward,
-            "evidence_found":        list(self._relevant_evidence_found),
-            "wrong_interventions":   self._wrong_interventions,
+            "step": self._step_count,
+            "evidence_found": list(self._relevant_evidence_found),
+            "wrong_interventions": self._wrong_interventions,
         }
         return obs, rew, done, info
 
     def state(self) -> Dict[str, Any]:
+        """
+        Get ground-truth state (for debugging/analysis).
+
+        Returns:
+            Dict with hidden fault, metrics, discovered evidence, etc.
+        """
         if self._task is None:
             return {"status": "not_started"}
         return {
-            "task_id":              self._task_id,
-            "current_task_name":    self._task["name"],
-            "difficulty":           self._task["difficulty"],
+            "task_id": self._task_id,
+            "current_task_name": self._task["name"],
+            "difficulty": self._task["difficulty"],
             "hidden_fault_service": self._task["fault_service"],
-            "hidden_fault_type":    self._task["fault_type"],
-            "step_count":           self._step_count,
-            "max_steps":            self._task["max_steps"],
-            "done":                 self._done,
-            "cumulative_reward":    self._cumulative_reward,
-            "evidence_found":       list(self._relevant_evidence_found),
-            "wrong_interventions":  self._wrong_interventions,
+            "hidden_fault_type": self._task["fault_type"],
+            "step_count": self._step_count,
+            "max_steps": self._task["max_steps"],
+            "done": self._done,
+            "cumulative_reward": self._cumulative_reward,
+            "evidence_found": list(self._relevant_evidence_found),
+            "wrong_interventions": self._wrong_interventions,
         }
 
     def grade(self) -> float:
         """
-        Final scoring gate — gated on RCA correctness.
+        Compute final episode score.
 
         Wrong RCA caps score at 0.15 regardless of investigation quality.
         Correct RCA: scaled cumulative + wrong_intervention penalty.
-        This ensures the LLM cannot "game" the score by collecting
-        evidence and then guessing randomly.
+
+        Returns:
+            Float in [0.001, 0.999]
         """
         if not self._done or not self._rca_declared:
             return 0.001
@@ -917,9 +1172,152 @@ class IncidentResponseEnv:
 
         # Correct RCA: use cumulative reward, penalise wrong interventions
         raw = self._cumulative_reward
-        # Each wrong intervention (restart/rollback wrong service) subtracts 0.10
         intervention_penalty = self._wrong_interventions * 0.10
         score = raw - intervention_penalty
         # Map from [-1, 1] to [0.001, 0.999]
         normalized = (score + 1.0) / 2.0
         return round(min(0.999, max(0.001, normalized)), 4)
+
+    def get_trajectory(self) -> Optional[EpisodeTrajectory]:
+        """
+        Get current episode trajectory (training mode only).
+
+        Returns:
+            EpisodeTrajectory if mode=="train" and episode is done, else None
+        """
+        if self._mode != "train" or not self._done:
+            return None
+
+        if self._current_trajectory is None:
+            return None
+
+        self._current_trajectory.cumulative_reward = self._cumulative_reward
+        self._current_trajectory.final_score = self.grade()
+        self._current_trajectory.success = self.grade() >= 0.6
+        self._current_trajectory.steps = self._episode_steps
+
+        return self._current_trajectory
+
+    def clear_trajectory(self) -> None:
+        """Clear episode trajectory (for memory management)."""
+        self._episode_steps = []
+        self._current_trajectory = None
+
+
+# ── Training Environment ───────────────────────────────────────────────────────
+
+class TrainingEnv(BaseIncidentEnv):
+    """
+    Training-mode environment with trajectory logging.
+
+    Features:
+    - Stores complete step trajectories for offline analysis
+    - Supports exploration modes
+    - Logs every action/reward/observation for behavioral cloning
+    - Dense logging for model debugging and analysis
+
+    Example:
+        >>> env = TrainingEnv()
+        >>> obs = env.reset("task_cpu_spike", seed=0)
+        >>> for _ in range(10):
+        ...     obs, rew, done, info = env.step(Action(...))
+        ...     if done: break
+        >>> trajectory = env.get_trajectory()
+        >>> print(f"Episode: {trajectory.episode_id}")
+        >>> print(f"Steps: {trajectory.num_steps}")
+        >>> print(f"Score: {trajectory.final_score}")
+        >>> print(f"Success: {trajectory.success}")
+    """
+
+    def __init__(self):
+        """Initialize training environment."""
+        super().__init__(mode="train")
+
+    def _log_step(
+        self,
+        step_num: int,
+        observation: Observation,
+        action: Action,
+        reward: Reward,
+        done: bool,
+    ) -> None:
+        """
+        Log step to trajectory (training mode).
+
+        Stores complete TrajectoryStep for offline analysis and behavioral cloning.
+        """
+        if self._current_trajectory is None:
+            return
+
+        trajectory_step = TrajectoryStep(
+            step_num=step_num,
+            observation=observation,
+            action=action,
+            reward=reward,
+            next_observation=observation,
+            done=done,
+            info=self.state(),
+        )
+
+        self._episode_steps.append(trajectory_step)
+
+    def enable_exploration(self, rate: float = 0.1) -> None:
+        """
+        Enable epsilon-greedy exploration (placeholder for future use).
+
+        Args:
+            rate: Probability of taking random action (0.0-1.0)
+
+        Note: Not yet implemented — placeholder for future training infrastructure.
+        """
+        self._exploration_rate = rate
+
+
+# ── Benchmark Environment ──────────────────────────────────────────────────────
+
+class BenchmarkEnv(BaseIncidentEnv):
+    """
+    Benchmark-mode environment with minimal logging.
+
+    Features:
+    - Deterministic evaluation (same seed = same trajectory)
+    - No trajectory storage (memory-efficient)
+    - Silent operation (except explicit queries via state() and grade())
+    - Strict grading (no partial credit for investigation)
+
+    Example:
+        >>> env = BenchmarkEnv()
+        >>> obs = env.reset("task_cpu_spike", seed=42)
+        >>> for i in range(20):
+        ...     obs, rew, done, info = env.step(Action(...))
+        ...     if done:
+        ...         break
+        >>> final_score = env.grade()
+        >>> print(f"Final Score: {final_score:.3f}")
+    """
+
+    def __init__(self):
+        """Initialize benchmark environment."""
+        super().__init__(mode="bench")
+
+    def _log_step(
+        self,
+        step_num: int,
+        observation: Observation,
+        action: Action,
+        reward: Reward,
+        done: bool,
+    ) -> None:
+        """
+        Silent logging (benchmark mode).
+
+        No trajectory storage — just run the episode and grade at the end.
+        """
+        pass  # Intentionally empty for benchmark mode
+
+
+# ── Backward Compatibility ────────────────────────────────────────────────────
+
+# Alias for old code expecting IncidentResponseEnv
+# Old code continues to work without changes
+IncidentResponseEnv = TrainingEnv
