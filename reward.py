@@ -44,8 +44,8 @@ class EvidenceTracker:
         ])
 
 
-_CICD_FIX_ACTIONS = {"rollback_workflow", "rotate_secret", "pin_action_to_sha", "isolate_runner"}
-_KAFKA_FIX_ACTIONS = {"skip_offset", "restart_consumer_group", "increase_broker_heap"}
+_CICD_FIX_ACTIONS = {"rollback_workflow", "rotate_secret", "pin_action_to_sha", "isolate_runner", "restart_service", "rollback_deployment"}
+_KAFKA_FIX_ACTIONS = {"skip_offset", "restart_consumer_group", "increase_broker_heap", "restart_service", "rollback_deployment"}
 
 
 def compute_step_reward(
@@ -88,8 +88,11 @@ def _cicd_reward(action, fault, step_count, max_s, ev: EvidenceTracker) -> float
     elif action == "check_runner_status":
         ev.runner_status_checked = True
         reward = 0.12 if fault in ("runner_queue_flood", "runner_compromise") else 0.04
-    elif action == "check_pipeline_status":
-        reward = 0.04
+    elif action == "check_pipeline_status" or action == "check_metrics":
+        reward = 0.05
+    elif action == "run_db_query":
+        ev.audit_log_read = True
+        reward = 0.15
 
     # Fix actions
     elif action in _CICD_FIX_ACTIONS:

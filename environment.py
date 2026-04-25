@@ -13,6 +13,7 @@ from reward import EvidenceTracker, compute_step_reward, compute_rca_reward
 TASKS = {
     "task_cpu_spike": {
         "name": "Auth service CPU hard loop",
+        "domain": "cicd",
         "difficulty": "easy",
         "max_steps": 10,
         "description": "A hot loop in JWT validation is pegging auth-service CPU at 99%.",
@@ -27,6 +28,7 @@ TASKS = {
     },
     "task_db_connection_leak": {
         "name": "Database connection pool exhaustion",
+        "domain": "cicd",
         "difficulty": "medium",
         "max_steps": 15,
         "description": "Connection pool leak in order-service causing cascading failures.",
@@ -41,6 +43,7 @@ TASKS = {
     },
     "task_redis_memory_eviction": {
         "name": "Redis cache memory eviction cascade",
+        "domain": "cicd",
         "difficulty": "medium",
         "max_steps": 15,
         "description": "Redis memory threshold hit, evicting keys. Cache hit rate collapsing.",
@@ -55,6 +58,7 @@ TASKS = {
     },
     "task_api_rate_limit": {
         "name": "API rate limit misconfiguration",
+        "domain": "cicd",
         "difficulty": "medium",
         "max_steps": 15,
         "description": "Rate limiter threshold set too low, blocking legitimate traffic.",
@@ -69,6 +73,7 @@ TASKS = {
     },
     "task_deadlock_order_service": {
         "name": "Database deadlock in order-service",
+        "domain": "cicd",
         "difficulty": "medium",
         "max_steps": 15,
         "description": "Concurrent order transactions causing PostgreSQL deadlock.",
@@ -83,6 +88,7 @@ TASKS = {
     },
     "task_ssl_cert_expired": {
         "name": "TLS certificate expiration",
+        "domain": "cicd",
         "difficulty": "medium",
         "max_steps": 15,
         "description": "SSL certificate for api-gateway expired, causing TLS handshake failures.",
@@ -97,6 +103,7 @@ TASKS = {
     },
     "task_slow_query_postgres": {
         "name": "Slow PostgreSQL query degradation",
+        "domain": "cicd",
         "difficulty": "medium",
         "max_steps": 15,
         "description": "Missing database index causing full table scan on high-traffic query.",
@@ -111,6 +118,7 @@ TASKS = {
     },
     "task_auth_service_500": {
         "name": "Auth service internal server error",
+        "domain": "cicd",
         "difficulty": "medium",
         "max_steps": 15,
         "description": "Null pointer exception in auth token validation handler.",
@@ -125,6 +133,7 @@ TASKS = {
     },
     "task_k8s_pod_crashloop": {
         "name": "Kubernetes pod crash loop",
+        "domain": "cicd",
         "difficulty": "medium",
         "max_steps": 15,
         "description": "notification-service pod in crash loop due to unhandled exception.",
@@ -139,6 +148,7 @@ TASKS = {
     },
     "task_disk_full": {
         "name": "Disk full — postgres WAL overflow",
+        "domain": "cicd",
         "difficulty": "easy",
         "max_steps": 10,
         "description": "The database WAL log grew unbounded. Disk hit 100% — all INSERT/UPDATE fail with ENOSPC.",
@@ -153,6 +163,7 @@ TASKS = {
     },
     "task_memory_leak": {
         "name": "Memory leak — notification service GC pauses",
+        "domain": "cicd",
         "difficulty": "medium",
         "max_steps": 15,
         "description": "Memory leak in email template renderer. GC pauses now take 10+ seconds.",
@@ -167,6 +178,7 @@ TASKS = {
     },
     "task_thread_starvation": {
         "name": "Thread pool exhaustion — auth service OAuth sync calls",
+        "domain": "cicd",
         "difficulty": "medium",
         "max_steps": 15,
         "description": "New OAuth integration added synchronous HTTP calls inside auth-service request handler.",
@@ -181,6 +193,7 @@ TASKS = {
     },
     "task_canary_poison": {
         "name": "Canary misconfiguration — api-gateway v2.1 strips auth headers",
+        "domain": "cicd",
         "difficulty": "hard",
         "max_steps": 20,
         "description": "A canary deployment of api-gateway v2.1 receives 10% of traffic and strips the Authorization header.",
@@ -195,6 +208,7 @@ TASKS = {
     },
     "task_clock_skew": {
         "name": "Clock skew — auth service NTP drift causes token rejections",
+        "domain": "cicd",
         "difficulty": "hard",
         "max_steps": 20,
         "description": "NTP daemon on auth-service host killed. Auth-service clock drifted 8 minutes ahead.",
@@ -209,6 +223,7 @@ TASKS = {
     },
     "task_expert": {
         "name": "Multi-root-cause: Redis + Auth config failure",
+        "domain": "cicd",
         "difficulty": "hard",
         "max_steps": 25,
         "description": (
@@ -231,6 +246,7 @@ TASKS = {
     },
     "task_expert_long_horizon": {
         "name": "Long-horizon cascade: Query degradation with latent secondary fault",
+        "domain": "cicd",
         "difficulty": "hard",
         "max_steps": 50,
         "description": (
@@ -585,6 +601,8 @@ class IncidentResponseEnv:
             random.seed(42)
         self._task_id                  = task_id
         self._task                     = TASKS[task_id].copy()
+        if "domain" not in self._task:
+            raise ValueError(f"Task schema validation failed: '{task_id}' is missing the required 'domain' key.")
         self._step_count               = 0
         self._done                     = False
         self._cumulative_reward        = 0.0
@@ -601,8 +619,10 @@ class IncidentResponseEnv:
         try:
             self._llm_client = LLMClient()
             self._judge = AdversarialJudge(self._llm_client)
-        except Exception:
+        except (ImportError, ConnectionError) as e:
+            import logging
             # If judge can't be constructed (missing deps), leave as None
+            logging.warning(f"LLM judge not initialized: {e}")
             self._llm_client = None
             self._judge = None
         self._history = []
@@ -877,9 +897,6 @@ class IncidentResponseEnv:
                     "read_logs": "read_job_logs",
                     "check_metrics": "get_cluster_metrics",
                     "check_health": "check_runner_status",
-                    "run_db_query": "read_consumer_logs",
-                    "restart_service": "restart_consumer_group",
-                    "rollback_deployment": "rollback_workflow",
                     "declare_rca": "declare_rca",
                 }
                 reward_action = action_map_reward.get(action.action_type, action.action_type)
@@ -892,22 +909,6 @@ class IncidentResponseEnv:
                         reward_reason = f"reward.py computed ({reward_action})"
                 except Exception as e:
                     print(f"[ERROR] reward.py compute_step_reward failed: {e}")
-
-                # Mirror evidence flags from EvidenceTracker into the env's evidence set
-                try:
-                    ev = self._evidence
-                    if ev is not None:
-                        if ev.logs_read:
-                            if action.action_type == "read_logs" and action.target == fault_svc:
-                                self._relevant_evidence_found.add("logs_fault_svc")
-                            elif action.action_type == "read_logs" and action.target == "api-gateway":
-                                self._relevant_evidence_found.add("logs_gateway")
-                        if ev.per_partition_lag_checked or ev.partition_inspected or ev.broker_logs_read:
-                            self._relevant_evidence_found.add("metrics_fault_svc")
-                        if ev.runner_status_checked or ev.action_integrity_checked or ev.audit_log_read:
-                            self._relevant_evidence_found.add("health_fault_svc")
-                except Exception as e:
-                    print(f"[ERROR] Evidence tracking failed to mirror: {e}")
         except Exception as e:
             print(f"[ERROR] Critical failure in phase 4 centralized reward block: {e}")
 
@@ -1019,7 +1020,8 @@ class IncidentResponseEnv:
             info["judge_missed_signal"] = None
         return obs, rew, done, info
 
-    def state(self) -> Dict[str, Any]:
+    def raw_state(self) -> Dict[str, Any]:
+        """Full internal state, including hidden ground truth labels. Use for debugging/logging, not agent obs."""
         if self._task is None:
             return {"status": "not_started"}
         return {
@@ -1032,9 +1034,18 @@ class IncidentResponseEnv:
             "max_steps":            self._task["max_steps"],
             "done":                 self._done,
             "cumulative_reward":    self._cumulative_reward,
-            "evidence_found":       list(self._relevant_evidence_found),
+            "evidence_found":       [k for k, v in vars(self._evidence).items() if v] if self._evidence else [],
             "wrong_interventions":  self._wrong_interventions,
         }
+
+    def state(self) -> Dict[str, Any]:
+        """Sanitized state for agent observation or UI representation."""
+        if self._task is None:
+            return {"status": "not_started"}
+        s = self.raw_state()
+        s.pop("hidden_fault_service", None)
+        s.pop("hidden_fault_type", None)
+        return s
 
     def grade(self) -> float:
         """
@@ -1050,7 +1061,7 @@ class IncidentResponseEnv:
 
         if not self._rca_correct:
             # Wrong RCA: partial credit for investigation only, heavily capped
-            evidence_credit = len(self._relevant_evidence_found) * 0.03
+            evidence_credit = (self._evidence.evidence_count_cicd() if self._task.get("domain", "cicd") == "cicd" else self._evidence.evidence_count_kafka()) * 0.03
             return round(min(0.15, max(0.001, evidence_credit)), 4)
 
         # Correct RCA: use cumulative reward, penalise wrong interventions

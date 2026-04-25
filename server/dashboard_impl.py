@@ -40,7 +40,13 @@ def load_benchmark_store(path: pathlib.Path) -> Dict[str, Any]:
     try:
         if path.exists():
             return json.loads(path.read_text())
-    except Exception: pass
+    except FileNotFoundError:
+        pass
+    except json.JSONDecodeError as e:
+        import shutil, logging
+        backup_path = path.with_suffix(".json.bak")
+        shutil.copy2(path, backup_path)
+        logging.warning(f"Corrupted JSON in {path}, backed up to {backup_path}. Error: {e}")
     return {"leaderboard": [], "latest_run": None}
 
 # ── Premium Polished CSS ──────────────────────────────────────────────────

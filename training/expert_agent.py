@@ -93,6 +93,28 @@ class ExpertAgent:
                 {"action_type": "run_db_query", "target": "postgres-db"},
                 {"action_type": "read_logs", "target": svc},
             ],
+            "deadlock": [
+                {"action_type": "run_db_query", "target": "postgres-db"},
+            ],
+            "cert_expired": [
+                {"action_type": "check_health", "target": svc},
+            ],
+            "slow_query": [
+                {"action_type": "run_db_query", "target": "postgres-db"},
+            ],
+            "null_pointer": [
+                {"action_type": "read_logs", "target": svc},
+            ],
+            "crash_loop": [
+                {"action_type": "check_health", "target": svc},
+            ],
+            "rate_limit_exceeded": [
+                {"action_type": "check_metrics", "target": svc},
+            ],
+            "bad_deployment": [
+                {"action_type": "check_health", "target": svc},
+                {"action_type": "read_logs", "target": svc},
+            ],
         }
         
         # Fixes per fault type
@@ -119,6 +141,27 @@ class ExpertAgent:
                 {"action_type": "rollback_deployment", "target": svc},
             ],
             "disk_full": [
+                {"action_type": "rollback_deployment", "target": svc},
+            ],
+            "deadlock": [
+                {"action_type": "restart_service", "target": svc},
+            ],
+            "cert_expired": [
+                {"action_type": "rollback_deployment", "target": svc},
+            ],
+            "slow_query": [
+                {"action_type": "restart_service", "target": svc},
+            ],
+            "null_pointer": [
+                {"action_type": "rollback_deployment", "target": svc},
+            ],
+            "crash_loop": [
+                {"action_type": "rollback_deployment", "target": svc},
+            ],
+            "rate_limit_exceeded": [
+                {"action_type": "restart_service", "target": svc},
+            ],
+            "bad_deployment": [
                 {"action_type": "rollback_deployment", "target": svc},
             ],
         }
