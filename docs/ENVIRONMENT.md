@@ -121,7 +121,7 @@ Get the final episode score.
 {"score": 0.8750}
 ```
 
-Score is in `[0.0, 1.0]`. Only meaningful after `done=true`.
+Score is in `[0.001, 0.999]`. Only meaningful after `done=true`. Clamped to this range to ensure meaningful differentiation between episodes.
 
 ---
 
@@ -465,11 +465,11 @@ correct service + wrong:   -0.10  # "rollback completed but wrong fix type"
 wrong service:             -0.30  # "WRONG TARGET — serious penalty teaches caution"
 
 # any repeated action
-                          +0.005  # "redundant action (minimum reward)"
+early (before 50%):      -0.08   # "early redundancy penalty"
+late (after 50%):        -0.20   # "late redundancy penalty"
 
 # declare_rca
-correct service:   0.50 × seq_bonus + time_bonus + evidence_bonus  (up to 0.999)
-partial match:     +0.10
+correct service:   0.50 + efficiency_bonus + evidence_bonus  (up to 0.999)
 wrong service:     -0.40  # Hard penalty for overconfident guessing
 
 # DESIGN PHILOSOPHY: Hard SRE penalties enforce causal reasoning
@@ -478,35 +478,28 @@ wrong service:     -0.40  # Hard penalty for overconfident guessing
 # All rewards are clamped to [0.001, 0.999] per competition rules, so no catastrophic spirals.
 ```
 
-### Time Bonus (declare_rca only)
+### Efficiency Bonus (declare_rca only)
 ```python
-time_bonus = max(0.0, (max_steps - step_count) / max_steps) * 0.4
-# Example: declare at step 4 of 10 → (10-4)/10 * 0.4 = 0.24
-# Example: declare at step 9 of 10 → (10-9)/10 * 0.4 = 0.04
+efficiency_bonus = max(0.0, (max_steps - step_count) / max_steps) * 0.30
+# Example: declare at step 4 of 10 → (10-4)/10 * 0.30 = 0.18
+# Example: declare at step 9 of 10 → (10-9)/10 * 0.30 = 0.03
 ```
 
 ### Evidence Bonus (declare_rca only)
 ```python
-evidence_bonus = len(relevant_evidence_found) * 0.03
-# Max: 5 evidence types × 0.03 = 0.15
-```
-
-### Time Pressure (after 50% steps used)
-```python
-if progress > 0.5:
-    scale = 0.99 - 0.5 * ((progress - 0.5) / 0.5)
-    reward_value = max(0.001, round(reward_value * scale, 4))
+evidence_bonus = min(len(relevant_evidence_found) * 0.05, 0.20)
+# Max: 4 evidence types × 0.05 = 0.20
 ```
 
 ### Cumulative Reward
 ```python
 cumulative = sum(all_step_rewards)  # can be negative due to hard penalties
-cumulative = max(0.001, min(0.999, cumulative))  # clamped to [0.001, 0.999]
+final_score = max(0.001, min(0.999, cumulative))  # clamped to [0.001, 0.999]
 ```
 
 ### Final Grade
 ```python
-score = cumulative_reward (already clamped to [0.001, 0.999])
+score = final_score  # Already clamped to [0.001, 0.999]
 success = score >= 0.6  # success threshold
 ```
 

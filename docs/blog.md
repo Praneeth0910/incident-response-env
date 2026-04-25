@@ -27,9 +27,11 @@ Our SRE benefits from step-by-step reasoning, avoiding red herrings and focusing
 Our RL agent is trained using **Stable Baselines** on a controlled environment with simulated incident tasks:
 
 **Reward Structure:**
-- **+0.30** for successfully completing a task
-- **-0.30** for task failure
-- **+0.07** bonus reward for applying previously learned solutions to similar problems using step-by-step reasoning
+- **+0.50** base reward for correct RCA declaration
+- **+0.30** efficiency bonus for fast diagnosis (up to)
+- **+0.20** evidence bonus for comprehensive investigation (up to)
+- **-0.30** for wrong service restart/rollback
+- **-0.40** for incorrect RCA declaration
 
 This training methodology enables the agent to develop intelligent, reusable strategies for common incident types.
 

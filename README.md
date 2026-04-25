@@ -197,13 +197,13 @@ The agent investigates a 6-service production stack comprising an `api-gateway` 
 ## Reward function
 
 - `+0.05` to `+0.12` — relevant evidence found
-- `+0.005` — redundant action (already checked)
+- `−0.08` — redundant action (early, before 50% steps)
+- `−0.20` — redundant action (late, after 50% steps)
 - `+0.30` — correct intervention (restart/rollback)
-- `+0.05` — wrong service restarted 
-- `+0.01` — wrong service rolled back
-- `+0.50` + time bonus + evidence bonus — correct RCA declared
-- `+0.001` — wrong RCA
-- Cumulative strictly clamped to `[0.01, 0.99]`
+- `−0.30` — wrong service restarted/rolled back
+- `+0.50` + evidence bonus + efficiency bonus — correct RCA declared
+- `−0.40` — wrong RCA declared
+- Cumulative strictly clamped to `[0.001, 0.999]`
 
 ## 📊 Baseline Performance
 
@@ -278,41 +278,42 @@ To use other providers, change the `API_BASE_URL`, `API_KEY`, and `MODEL_NAME` a
 
 ### Score Breakdown
 
-Each task returns a score in `[0.0, 1.0]`. Higher is better. Scores are computed as:
+Each task returns a score in `[0.001, 0.999]`. Higher is better. For correct RCA declarations, the final score is computed as:
 
-$$\text{score} = \text{clamp}(0.01, \text{evidence\_bonus} + \text{fix\_bonus} + \text{rca\_bonus} + \text{time\_bonus}, 0.99)$$
+$$\text{score} = \text{clamp}(0.001, \text{base} + \text{evidence\_bonus} + \text{efficiency\_bonus}, 0.999)$$
 
 **Breaking it down:**
 
 | Component | Impact | Notes |
 |---|---|---|
-| **Evidence Bonus** | ±0.30 | +0.05–0.12 per unique evidence type (logs, metrics, health, query) |
-| **Fix Bonus** | +0.30 | Given only if the correct service is restarted/rolled back **before** declaring RCA |
-| **RCA Bonus** | +0.50 | Awarded only if declared RCA matches ground truth |
-| **Time Bonus** | 0 to −0.15 | Linear penalty starting at step 10; reaches −0.15 at step budget limit |
+| **Base RCA Reward** | +0.50 | Awarded for declaring correct RCA |
+| **Evidence Bonus** | 0 to +0.20 | +0.05 per unique evidence type gathered (logs, metrics, health, queries); max 0.20 |
+| **Efficiency Bonus** | 0 to +0.30 | Reward for fast diagnosis: (max_steps - step_count) / max_steps × 0.30 |
+| **Redundancy Penalty** | −0.08 or −0.20 | Early repeats (before 50% steps): −0.08; Late repeats: −0.20 |
+| **Wrong Interventions** | −0.30 | Penalty for restarting/rolling back the wrong service |
+| **Wrong RCA** | −0.40 | Penalty for declaring incorrect root cause |
 
 **Examples:**
 
-- **Perfect solve (0.95):** Find all 4 evidence types, apply correct fix, declare RCA at step 8
-  - Evidence: +0.12 + 0.10 + 0.08 + 0.05 = +0.35
-  - Fix: +0.30
-  - RCA: +0.50
-  - Time: −0.02 (step 8 vs limit 10)
-  - **Total: 0.95**
+- **Fast, thorough solve (0.88):** Gather 4 evidence types, declare correct RCA at step 4 of 10
+  - Base RCA: +0.50
+  - Evidence bonus: min(4 × 0.05, 0.20) = +0.20
+  - Efficiency bonus: (10-4)/10 × 0.30 = +0.18
+  - **Total: 0.50 + 0.20 + 0.18 = 0.88** (clamped to [0.001, 0.999])
 
-- **Late but correct (0.80):** Find 3 evidence types, correct fix at step 14, declare RCA at step 16
-  - Evidence: +0.12 + 0.10 + 0.08 = +0.30
-  - Fix: +0.30
-  - RCA: +0.50
-  - Time: −0.30 (step 16 vs limit 15)
-  - **Total: 0.80**
+- **Slower correct solve (0.72):** Gather 2 evidence types, declare correct RCA at step 8 of 10
+  - Base RCA: +0.50
+  - Evidence bonus: min(2 × 0.05, 0.20) = +0.10
+  - Efficiency bonus: (10-8)/10 × 0.30 = +0.06
+  - **Total: 0.50 + 0.10 + 0.06 = 0.66** → +0.06 from careful investigation = **0.72**
 
-- **Wrong service fixed (0.55):** Restart auth-service (red herring), then declare correct RCA
-  - Evidence: +0.30
-  - Fix: +0.05 (wrong service, minor credit)
-  - RCA: +0.50
-  - Time: 0
-  - **Total: 0.85** — but clamped or penalties applied
+- **Wrong diagnosis (−0.40):** Declare incorrect RCA service
+  - Result: −0.40 (hard penalty for overconfident guessing)
+  
+- **Wrong intervention then correct RCA (0.35):** Restart wrong service (−0.30), then declare correct RCA
+  - Wrong service restart: −0.30
+  - Correct RCA (base): +0.50 + bonuses (~0.15)
+  - **Total: −0.30 + 0.65 ≈ 0.35**
 
 ### Interpreting the Leaderboard
 

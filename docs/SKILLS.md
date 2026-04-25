@@ -98,17 +98,16 @@ This means at step 8 of 10 (80% progress), each action costs an additional −0.
 
 The `declare_rca` bonus includes:
 ```python
-evidence_bonus = len(relevant_evidence_found) * 0.03
+evidence_bonus = min(len(relevant_evidence_found) * 0.05, 0.20)
 ```
 
 Evidence types tracked:
-- `logs_fault_svc` — read_logs on the actual fault service
-- `logs_gateway` — read_logs on api-gateway
-- `metrics_fault_svc` — check_metrics on fault service
-- `health_fault_svc` — check_health on fault service
-- `db_query` — run_db_query (only for connection_pool_exhausted tasks)
+- `logs_read` — read_logs on any service
+- `metrics_checked` — check_metrics on any service
+- `health_checked` — check_health on any service
+- `db_query_run` — run_db_query (for any connection-related tasks)
 
-**Maximum evidence bonus: +0.15** (5 evidence types × 0.03)
+**Maximum evidence bonus: +0.20** (4 evidence types × 0.05)
 
 An agent that collects all 3 core evidence types (logs + metrics + health on fault service) before declaring RCA will always outscore one that declares immediately after 1 evidence piece.
 
@@ -121,7 +120,7 @@ An agent that collects all 3 core evidence types (logs + metrics + health on fau
 **1. Anti-repetition rule (fixes Level 0):**
 ```
 CRITICAL: You will be told which actions you have already taken.
-NEVER repeat an action you have already taken. Repeating costs -0.05.
+NEVER repeat an action you have already taken. Early repeats cost -0.08, late repeats cost -0.20.
 ```
 
 **2. Hypothesis forcing (fixes Level 1):**

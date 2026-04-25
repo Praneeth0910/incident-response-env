@@ -74,8 +74,8 @@ Tasks contain **deliberately misleading signals**:
 
 **CRITICAL RULES:**
 - Respond with **ONLY valid JSON** — no prose, no markdown fences, no explanation
-- **Never repeat an action** you have already taken — returns +0.005 (minimum floor) — no negative penalty by design
-- **Never restart or rollback** before you have evidence — wrong target = +0.001 (minimum floor)
+- **Never repeat an action** you have already taken — early repeats: -0.08, late repeats: -0.20
+- **Never restart or rollback** before you have evidence — wrong target = -0.30
 - **Never declare RCA** unless you have corroborating evidence from at least 2 action types
 
 ---
@@ -110,36 +110,14 @@ Ideal episode = **3–8 steps**. Max steps = 15 for all tasks.
 
 | Reward Range | Meaning | What To Do |
 |---|---|---|
-| `+0.08` to `+0.12` | You found relevant evidence | Continue investigating same service |
+| `+0.08` to `+0.18` | You found relevant evidence | Continue investigating same service |
 | `+0.05` | Weak signal (gateway logs, health check) | Don't stop here — dig deeper |
-| `0.00` | No signal — wrong service | Pivot to a different service |
-| `+0.005` | Redundant action (already checked this) | Move on to new actions |
+| `0.00` to `+0.01` | No signal — wrong service | Pivot to a different service |
+| `-0.08` to `-0.20` | Redundant action (early or late repeats) | Move on to new actions |
 | `-0.30` | Wrong service restart/rollback | Serious mistake — gather evidence first next time |
 | `-0.40` | Wrong RCA declared | Overconfident diagnosis cost you |
 | `+0.30` | Correct restart/rollback | Good! Proceed to declare_rca |
 | `+0.50` to `+0.99` | Correct RCA declared | Episode complete |
-
-### 🔑 Sequence Bonus: Rewarding Investigation, Not Just Results
-
-**Key insight:** Two agents can both fix the right service, but **the agent that investigated first gets higher rewards**.
-
-**Sequence Bonus Multipliers:**
-- **2+ evidence types before acting** → `×1.0` multiplier (full reward)
-- **1 evidence type before acting** → `×0.6` multiplier (60% reward)
-- **0 evidence types (blind guess)** → `×0.2` multiplier (20% reward)
-
-**Example:**
-```
-Correct restart of postgres-db = +0.30 base reward
-
-Agent A (checked logs + metrics): +0.30 × 1.0 = +0.30 ✓
-Agent B (checked only logs):      +0.30 × 0.6 = +0.18
-Agent C (guessed blind):          +0.30 × 0.2 = +0.06
-```
-
-**This means:** Spend 3-5 steps gathering evidence, then act decisively. Don't guess immediately, but don't over-investigate either.
-
-**Time pressure** activates after 50% of steps are used. After that, every step costs an additional small negative reward. Be decisive about declaring RCA once you have 2-3 evidence types.
 
 ---
 
