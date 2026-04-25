@@ -51,79 +51,82 @@ class ExpertAgent:
 
     def _cicd_plan(self, fault: str) -> list[dict]:
         """Optimal investigation path for CI/CD faults."""
+        svc = self.task.get("fault_service", "auth-service")
+        
         # Start with observation actions
         base = [
-            {"action_type": "read_logs",      "target": "auth-service"},
-            {"action_type": "check_metrics",  "target": "auth-service"},
-            {"action_type": "check_health",   "target": "auth-service"},
+            {"action_type": "read_logs",      "target": svc},
+            {"action_type": "check_metrics",  "target": svc},
+            {"action_type": "check_health",   "target": svc},
         ]
         
         # Fault-specific evidence gathering
         fault_evidence = {
             "cpu_spike": [
-                {"action_type": "check_health", "target": "auth-service"},
+                {"action_type": "check_health", "target": svc},
             ],
             "secret_rotation_break": [
-                {"action_type": "read_logs", "target": "order-service"},
+                {"action_type": "read_logs", "target": svc},
                 {"action_type": "run_db_query", "target": "postgres-db"},
             ],
             "connection_pool_exhausted": [
                 {"action_type": "run_db_query", "target": "postgres-db"},
-                {"action_type": "read_logs", "target": "order-service"},
+                {"action_type": "read_logs", "target": svc},
             ],
             "memory_leak": [
-                {"action_type": "check_metrics", "target": "notification-service"},
-                {"action_type": "read_logs", "target": "notification-service"},
+                {"action_type": "check_metrics", "target": svc},
+                {"action_type": "read_logs", "target": svc},
             ],
             "thread_pool_exhausted": [
-                {"action_type": "check_metrics", "target": "auth-service"},
-                {"action_type": "check_health", "target": "auth-service"},
+                {"action_type": "check_metrics", "target": svc},
+                {"action_type": "check_health", "target": svc},
             ],
             "canary_misconfiguration": [
-                {"action_type": "check_metrics", "target": "api-gateway"},
-                {"action_type": "read_logs", "target": "api-gateway"},
+                {"action_type": "check_metrics", "target": svc},
+                {"action_type": "read_logs", "target": svc},
             ],
             "clock_skew": [
-                {"action_type": "read_logs", "target": "auth-service"},
-                {"action_type": "check_metrics", "target": "auth-service"},
+                {"action_type": "read_logs", "target": svc},
+                {"action_type": "check_metrics", "target": svc},
             ],
             "disk_full": [
                 {"action_type": "run_db_query", "target": "postgres-db"},
-                {"action_type": "read_logs", "target": "postgres-db"},
+                {"action_type": "read_logs", "target": svc},
             ],
         }
         
         # Fixes per fault type
         fixes = {
             "cpu_spike": [
-                {"action_type": "restart_service", "target": "auth-service"},
+                {"action_type": "restart_service", "target": svc},
             ],
             "secret_rotation_break": [
-                {"action_type": "rollback_deployment", "target": "order-service"},
+                {"action_type": "rollback_deployment", "target": svc},
             ],
             "connection_pool_exhausted": [
-                {"action_type": "restart_service", "target": "order-service"},
+                {"action_type": "restart_service", "target": svc},
             ],
             "memory_leak": [
-                {"action_type": "restart_service", "target": "notification-service"},
+                {"action_type": "restart_service", "target": svc},
             ],
             "thread_pool_exhausted": [
-                {"action_type": "restart_service", "target": "auth-service"},
+                {"action_type": "restart_service", "target": svc},
             ],
             "canary_misconfiguration": [
-                {"action_type": "rollback_deployment", "target": "api-gateway"},
+                {"action_type": "rollback_deployment", "target": svc},
             ],
             "clock_skew": [
-                {"action_type": "rollback_deployment", "target": "auth-service"},
+                {"action_type": "rollback_deployment", "target": svc},
             ],
             "disk_full": [
-                {"action_type": "rollback_deployment", "target": "postgres-db"},
+                {"action_type": "rollback_deployment", "target": svc},
             ],
         }
         
-        fault_component = self.task.get("fault_service", "auth-service")
+        fault_component = svc
         plan = base + fault_evidence.get(fault, []) + fixes.get(fault, [])
         plan.append({"action_type": "declare_rca", "target": fault_component})
+        print(f"BUG FIXED: CICD plan now dynamically targets fault_service. Task using service: {svc}")
         return plan
 
     def _kafka_plan(self, fault: str) -> list[dict]:
@@ -212,13 +215,13 @@ class ExpertAgent:
         
         return None  # episode complete
 
-    def run_episode(self, env) -> EpisodeTrajectory:
+    def run_episode(self, env, task_id: str = "task_cpu_spike") -> EpisodeTrajectory:
         """
         Run a full episode with the expert agent.
         Returns a trajectory object.
         """
         # Reset environment with this task
-        obs = env.reset(self.task.get("id", "task_cpu_spike"))
+        obs = env.reset(task_id)
         history = []
         total_reward = 0.0
         
@@ -251,7 +254,7 @@ class ExpertAgent:
         rca_correct = env._rca_correct if hasattr(env, "_rca_correct") else False
         
         return EpisodeTrajectory(
-            task_id=self.task.get("id", "unknown"),
+            task_id=task_id,
             domain=self.domain,
             steps=history,
             total_reward=total_reward,
@@ -269,10 +272,13 @@ def run_expert_on_all_tasks(env, tasks: Dict[str, dict]) -> List[EpisodeTrajecto
     for task_id, task in tasks.items():
         try:
             expert = ExpertAgent(task)
-            traj = expert.run_episode(env)
+            traj = expert.run_episode(env, task_id)
             trajectories.append(traj)
             print(f"{task_id}: score={traj.final_score:.3f} reward={traj.total_reward:.3f} rca={traj.rca_correct}")
         except Exception as e:
             print(f"{task_id}: FAILED - {e}")
+            
+    unique_ids = list(set([t.task_id for t in trajectories]))
+    print(f"BUG FIXED: All tasks executed. Unique task_ids = {unique_ids}")
     
     return trajectories

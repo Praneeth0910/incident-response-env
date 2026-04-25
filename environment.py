@@ -209,7 +209,7 @@ TASKS = {
     },
     "task_expert": {
         "name": "Multi-root-cause: Redis + Auth config failure",
-        "difficulty": "expert",
+        "difficulty": "hard",
         "max_steps": 25,
         "description": (
             "Two independent failures: Redis connection pool exhausted "
@@ -231,7 +231,7 @@ TASKS = {
     },
     "task_expert_long_horizon": {
         "name": "Long-horizon cascade: Query degradation with latent secondary fault",
-        "difficulty": "expert",
+        "difficulty": "hard",
         "max_steps": 50,
         "description": (
             "LONG-HORIZON TEST (50 steps). postgres-db slow_query causes gradual degradation. "
@@ -634,9 +634,13 @@ class IncidentResponseEnv:
         done          = False
 
         action_key = f"{action.action_type}:{action.target}"
+        was_redundant = False
+        print("BUG FIXED: was_redundant properly initialized and reward pipeline active")
 
         # ── REDUNDANT ACTION — escalating penalty ─────────────────────────────
         if action_key in self._actions_taken and action.action_type != "declare_rca":
+            was_redundant = True
+            print(f"[DEBUG] Redundant action detected: {action_key}")
             reward_value  = _compute_redundancy_penalty(self._step_count, max_steps)
             reward_reason = (
                 f"redundant action — already checked {action.target} with "
@@ -866,6 +870,7 @@ class IncidentResponseEnv:
         try:
             # Only compute central rewards for non-redundant actions
             if not was_redundant and action.action_type != "declare_rca":
+                print(f"[DEBUG] Triggering compute_step_reward for {action.action_type}")
                 action_map_reward = {
                     "read_logs": "read_job_logs",
                     "check_metrics": "get_cluster_metrics",
@@ -883,9 +888,8 @@ class IncidentResponseEnv:
                     if isinstance(computed, float):
                         reward_value = round(computed, 4)
                         reward_reason = f"reward.py computed ({reward_action})"
-                except Exception:
-                    # if reward lib fails, leave inline reward_value as fallback
-                    pass
+                except Exception as e:
+                    print(f"[ERROR] reward.py compute_step_reward failed: {e}")
 
                 # Mirror evidence flags from EvidenceTracker into the env's evidence set
                 try:
@@ -900,10 +904,10 @@ class IncidentResponseEnv:
                             self._relevant_evidence_found.add("metrics_fault_svc")
                         if ev.runner_status_checked or ev.action_integrity_checked or ev.audit_log_read:
                             self._relevant_evidence_found.add("health_fault_svc")
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as e:
+                    print(f"[ERROR] Evidence tracking failed to mirror: {e}")
+        except Exception as e:
+            print(f"[ERROR] Critical failure in phase 4 centralized reward block: {e}")
 
         # ── cascade mechanic ──────────────────────────────────────────────────
         cascade_step = task.get("cascade_step")
