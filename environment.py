@@ -3,6 +3,10 @@ import uuid
 from typing import Any, Dict, Optional, Tuple
 from models import Action, Observation, Reward
 
+# Judge integration
+from judge.llm_client import LLMClient
+from judge.llm_judge import AdversarialJudge
+
 # ── Task definitions ──────────────────────────────────────────────────────────
 
 TASKS = {
@@ -564,6 +568,10 @@ class IncidentResponseEnv:
         self._rca_correct:             bool           = False
         # New: track wrong interventions for grade penalty
         self._wrong_interventions:     int            = 0
+        # LLM judge + history for phase-aware evaluation
+        self._llm_client: Optional[LLMClient] = None
+        self._judge: Optional[AdversarialJudge] = None
+        self._history: list[dict] = []
 
     def reset(self, task_id: str = "task_cpu_spike", seed: Optional[int] = None) -> Observation:
         if task_id not in TASKS:
@@ -584,6 +592,15 @@ class IncidentResponseEnv:
         self._rca_declared             = False
         self._rca_correct              = False
         self._wrong_interventions      = 0
+        # Initialize or reset judge client and history
+        try:
+            self._llm_client = LLMClient()
+            self._judge = AdversarialJudge(self._llm_client)
+        except Exception:
+            # If judge can't be constructed (missing deps), leave as None
+            self._llm_client = None
+            self._judge = None
+        self._history = []
         return Observation(
             message=(
                 f"Incident active. {self._task['description']} "
@@ -879,6 +896,39 @@ class IncidentResponseEnv:
             "evidence_found":        list(self._relevant_evidence_found),
             "wrong_interventions":   self._wrong_interventions,
         }
+
+        # Run the LLM judge (best-effort). Map local action types to judge action names.
+        try:
+            if self._judge is not None:
+                action_map = {
+                    "read_logs": "read_job_logs",
+                    "check_metrics": "get_cluster_metrics",
+                    "check_health": "check_runner_status",
+                    "run_db_query": "read_consumer_logs",
+                    "restart_service": "restart_consumer_group",
+                    "rollback_deployment": "rollback_workflow",
+                    "declare_rca": "declare_rca",
+                }
+                judge_action = action_map.get(action.action_type, action.action_type)
+                task_context = {
+                    "domain": "cicd",
+                    "alert_message": task.get("alert"),
+                    "root_cause": task.get("description"),
+                    "fault_type": task.get("fault_type"),
+                    "fault_component": task.get("fault_service"),
+                    "resolution_steps": task.get("ideal_steps", []),
+                    "difficulty": task.get("difficulty"),
+                    "max_steps": task.get("max_steps"),
+                }
+                judge_score, judge_feedback = self._judge.evaluate(judge_action, message, task_context, self._history)
+                info["judge_score"] = judge_score
+                info["judge_feedback"] = judge_feedback
+                # Append to local history for future phase-aware judgements
+                self._history.append({"step": self._step_count, "action": judge_action, "reward": reward_value, "judge_score": judge_score})
+        except Exception:
+            # Never let judge failures break the environment
+            info["judge_score"] = None
+            info["judge_feedback"] = None
         return obs, rew, done, info
 
     def state(self) -> Dict[str, Any]:
