@@ -327,7 +327,9 @@ def run_episode(
             {"role": "user", "content": f"ALERT: {alert}\n\n{message}"},
         ]
 
-        max_steps = 15  # All 9 incident tasks use same step limit
+        # Get task metadata to find correct max_steps (varies by task difficulty)
+        task_meta = TASKS.get(task_id, {})
+        max_steps = task_meta.get("max_steps", 15)
 
         for step in range(1, max_steps + 1):
             action, raw_response = get_llm_action(

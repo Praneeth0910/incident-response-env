@@ -865,48 +865,13 @@ class IncidentResponseEnv:
                     )
                     message = f"INCORRECT. The fault was in {', '.join(fault_services)}, not {action.target}.\n[END]"
 
-        # --- Centralized step reward (Phase 4): let reward.py compute step rewards
-        try:
-            # Only compute central rewards for non-redundant actions
-            if not was_redundant and action.action_type != "declare_rca":
-                action_map_reward = {
-                    "read_logs": "read_job_logs",
-                    "check_metrics": "get_cluster_metrics",
-                    "check_health": "check_runner_status",
-                    "run_db_query": "read_consumer_logs",
-                    "restart_service": "restart_consumer_group",
-                    "rollback_deployment": "rollback_workflow",
-                    "declare_rca": "declare_rca",
-                }
-                reward_action = action_map_reward.get(action.action_type, action.action_type)
-                try:
-                    # normalize history entries to reward-action names for redundancy detection
-                    actions_conv = [action_map_reward.get(k.split(':', 1)[0], k.split(':', 1)[0]) for k in self._actions_taken]
-                    computed = compute_step_reward(reward_action, task, self._step_count, actions_conv, self._evidence, observation=message)
-                    if isinstance(computed, float):
-                        reward_value = round(computed, 4)
-                        reward_reason = f"reward.py computed ({reward_action})"
-                except Exception:
-                    # if reward lib fails, leave inline reward_value as fallback
-                    pass
-
-                # Mirror evidence flags from EvidenceTracker into the env's evidence set
-                try:
-                    ev = self._evidence
-                    if ev is not None:
-                        if ev.logs_read:
-                            if action.action_type == "read_logs" and action.target == fault_svc:
-                                self._relevant_evidence_found.add("logs_fault_svc")
-                            elif action.action_type == "read_logs" and action.target == "api-gateway":
-                                self._relevant_evidence_found.add("logs_gateway")
-                        if ev.per_partition_lag_checked or ev.partition_inspected or ev.broker_logs_read:
-                            self._relevant_evidence_found.add("metrics_fault_svc")
-                        if ev.runner_status_checked or ev.action_integrity_checked or ev.audit_log_read:
-                            self._relevant_evidence_found.add("health_fault_svc")
-                except Exception:
-                    pass
-        except Exception:
-            pass
+        # --- Centralized step reward (Phase 4): DISABLED
+        # Reason: reward.py is designed for CI/CD and Kafka domains,
+        # but this environment uses microservice incident faults (cpu_spike, disk_full, etc.)
+        # that don't match CI/CD fault types. The centralized rewards were returning 0.0,
+        # silently overwriting the carefully-tuned inline rewards above.
+        # Phase 4 integration is postponed until reward.py has microservice reward functions.
+        # For now, we rely on the domain-correct inline reward logic above.
 
         # ── cascade mechanic ──────────────────────────────────────────────────
         cascade_step = task.get("cascade_step")
