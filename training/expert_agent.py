@@ -193,7 +193,7 @@ class ExpertAgent:
         plan.append({"action_type": "declare_rca", "target": fault_component})
         return plan
 
-    def get_next_action(self, observation: dict | str = "", history: list = None) -> Optional[Action]:
+    def get_next_action(self, observation: dict | str = "", history: Optional[list] = None) -> Optional[Action]:
         """
         Get next action from the plan.
         Skips if action was already taken.
@@ -217,8 +217,9 @@ class ExpertAgent:
         Run a full episode with the expert agent.
         Returns a trajectory object.
         """
-        # Reset environment with this task
-        obs = env.reset(self.task.get("id", "task_cpu_spike"))
+        # Reset environment with this task (use task_id from task dict)
+        task_id = self.task.get("id", "task_cpu_spike")
+        obs = env.reset(task_id)
         history = []
         total_reward = 0.0
         
@@ -251,7 +252,7 @@ class ExpertAgent:
         rca_correct = env._rca_correct if hasattr(env, "_rca_correct") else False
         
         return EpisodeTrajectory(
-            task_id=self.task.get("id", "unknown"),
+            task_id=task_id,
             domain=self.domain,
             steps=history,
             total_reward=total_reward,
@@ -268,7 +269,9 @@ def run_expert_on_all_tasks(env, tasks: Dict[str, dict]) -> List[EpisodeTrajecto
     trajectories = []
     for task_id, task in tasks.items():
         try:
-            expert = ExpertAgent(task)
+            # Add task_id to task dict so ExpertAgent can use it
+            task_with_id = {**task, "id": task_id}
+            expert = ExpertAgent(task_with_id)
             traj = expert.run_episode(env)
             trajectories.append(traj)
             print(f"{task_id}: score={traj.final_score:.3f} reward={traj.total_reward:.3f} rca={traj.rca_correct}")

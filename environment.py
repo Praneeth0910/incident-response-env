@@ -635,8 +635,11 @@ class IncidentResponseEnv:
 
         action_key = f"{action.action_type}:{action.target}"
 
+        # Compute redundancy flag once, used by both inline and centralized reward paths
+        was_redundant = action_key in self._actions_taken and action.action_type != "declare_rca"
+
         # ── REDUNDANT ACTION — escalating penalty ─────────────────────────────
-        if action_key in self._actions_taken and action.action_type != "declare_rca":
+        if was_redundant:
             reward_value  = _compute_redundancy_penalty(self._step_count, max_steps)
             reward_reason = (
                 f"redundant action — already checked {action.target} with "
