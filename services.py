@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 from datetime import datetime
 
 # ── Service Status Definition ──────────────────────────────────────────────────
@@ -179,7 +179,7 @@ class ServiceSimulator:
     def propagate_failure(
         self, 
         root_service: str, 
-        fault_type: FaultType,
+        fault_type: FaultType | str,
         max_cascade_depth: int = 5
     ) -> Dict[str, any]:
         """
@@ -211,7 +211,8 @@ class ServiceSimulator:
         # Mark root service as down
         root_svc.status = ServiceStatus.DOWN
         root_svc.failure_start_time = datetime.now()
-        root_svc.root_cause_fault = fault_type.value
+        root_fault = fault_type.value if isinstance(fault_type, FaultType) else str(fault_type)
+        root_svc.root_cause_fault = root_fault
         
         # Cascade through dependents
         to_visit = {root_service}
@@ -254,7 +255,7 @@ class ServiceSimulator:
         
         return {
             "root_service": root_service,
-            "root_fault_type": fault_type.value,
+            "root_fault_type": root_fault,
             "affected_services": affected,
             "affected_count": len(affected),
             "cascade_chain": cascade_chain,
@@ -1025,7 +1026,7 @@ def get_all_dependents_recursive(service_name: str) -> Set[str]:
     return visited
 
 
-def simulate_failure(service_name: str) -> Dict[str, any]:
+def simulate_failure(service_name: str) -> Dict[str, Any]:
     """
     Simulate the impact of a service failure.
 
@@ -1074,6 +1075,42 @@ def simulate_failure(service_name: str) -> Dict[str, any]:
             svc for svc in cascade_impact if SERVICE_REGISTRY[svc].critical_path
         ],
     }
+
+
+def propagate_failure(
+    service_name: str,
+    fault_type: FaultType | str = FaultType.DEPENDENCY_FAILURE,
+    max_cascade_depth: int = 5,
+    registry: Optional[Dict[str, Service]] = None,
+) -> Dict[str, Any]:
+    """
+    Apply a root-cause failure to a service registry and cascade it to dependents.
+
+    This module-level wrapper keeps simple callers from needing to instantiate
+    ServiceSimulator directly. Passing a registry gives each environment its own
+    isolated service state; omitting it mutates SERVICE_REGISTRY.
+    """
+    simulator = ServiceSimulator(registry or SERVICE_REGISTRY)
+    return simulator.propagate_failure(
+        root_service=service_name,
+        fault_type=fault_type,
+        max_cascade_depth=max_cascade_depth,
+    )
+
+
+def update_metrics(
+    service_name: str,
+    metric_updates: Dict[str, float],
+    registry: Optional[Dict[str, Service]] = None,
+) -> Dict[str, float]:
+    """
+    Update runtime metrics for a service in a registry.
+
+    This is the functional counterpart to ServiceSimulator.update_metrics and is
+    useful for reward/observation code that should not own a simulator instance.
+    """
+    simulator = ServiceSimulator(registry or SERVICE_REGISTRY)
+    return simulator.update_metrics(service_name, metric_updates)
 
 
 def get_service_metrics(service_name: str) -> Dict[str, MetricSignal]:

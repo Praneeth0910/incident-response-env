@@ -13,13 +13,24 @@ Run: python test_task_integration.py
 """
 
 import sys
+import pytest
 from environment_integrated import IntegratedIncidentEnv
 from models import Action
 from task_integration import TaskLoader, ObservationGenerator
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
 
-def test_task_loading():
-    """Test loading tasks from JSON."""
+
+@pytest.fixture
+def loader():
+    """Shared task loader for pytest collection."""
+    return TaskLoader()
+
+
+def _load_and_print_tasks():
     print("\n" + "=" * 70)
     print("TEST 1: Task Loading")
     print("=" * 70)
@@ -41,6 +52,12 @@ def test_task_loading():
     print(f"  - Domains: {', '.join(sorted(domains))}")
 
     return loader
+
+
+def test_task_loading():
+    """Test loading tasks from JSON."""
+    loader = _load_and_print_tasks()
+    assert loader.tasks
 
 
 def test_observation_generation(loader):
@@ -281,7 +298,7 @@ def main():
     print("#" * 70)
 
     try:
-        loader = test_task_loading()
+        loader = _load_and_print_tasks()
         test_observation_generation(loader)
         test_cascade_detection(loader)
         test_red_herrings(loader)

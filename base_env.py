@@ -8,10 +8,12 @@ from __future__ import annotations
 import random
 import uuid
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Set, Tuple
 
 from models import Action, Observation, Reward
+from services import SERVICE_REGISTRY, Service, ServiceSimulator, ServiceStatus
 
 
 @dataclass
@@ -97,6 +99,10 @@ class BaseIncidentEnv(ABC):
         self._rca_declared: bool = False
         self._rca_correct: bool = False
         self._wrong_interventions: int = 0
+        self._service_registry: Dict[str, Service] = {}
+        self._service_simulator: Optional[ServiceSimulator] = None
+        self._active_fault_services: Set[str] = set()
+        self._cascade_impact: Dict[str, Any] = {}
 
         self._current_trajectory: Optional[EpisodeTrajectory] = None
         self._episode_steps: list[TrajectoryStep] = []
@@ -131,6 +137,8 @@ class BaseIncidentEnv(ABC):
         self._rca_declared = False
         self._rca_correct = False
         self._wrong_interventions = 0
+        self._reset_service_simulation()
+        self._propagate_task_faults()
 
         if self._mode == "train":
             self._current_trajectory = EpisodeTrajectory(
@@ -173,9 +181,7 @@ class BaseIncidentEnv(ABC):
         self._cumulative_reward = round(max(-1.0, min(1.0, self._cumulative_reward)), 4)
         self._done = done
 
-        self._log_step(self._step_count, observation, action, reward, done)
-
-        info["cumulative_reward"] = self._cumulative_reward
+        self._apply_action_to_service_state(action, observation, reward)
 
         # Handle cascade mechanics
         cascade_step = self._task.get("cascade_step")
@@ -183,6 +189,7 @@ class BaseIncidentEnv(ABC):
                 and self._step_count >= cascade_step and not done):
             self._cascade_triggered = True
             cascade_svc = self._task.get("cascade_service")
+            self._trigger_cascade_service(cascade_svc)
             cascade_note = (
                 f"\n[CASCADE] {cascade_svc} is now DEGRADED — "
                 f"new errors propagating. Investigate urgently."
@@ -205,6 +212,16 @@ class BaseIncidentEnv(ABC):
                 self._done = True
                 observation.message += f"\n[SLA BREACHED] Max steps ({self._task['max_steps']}) reached.\n[END]"
 
+        if action.action_type == "declare_rca":
+            self._rca_declared = True
+            declared_services = {
+                svc.strip() for svc in action.target.split(",") if svc.strip()
+            }
+            self._rca_correct = declared_services == self._active_fault_services
+
+        self._log_step(self._step_count, observation, action, reward, done)
+
+        info["cumulative_reward"] = self._cumulative_reward
         info["step"] = self._step_count
         info["evidence_found"] = list(self._relevant_evidence_found)
         info["wrong_interventions"] = self._wrong_interventions
@@ -227,6 +244,21 @@ class BaseIncidentEnv(ABC):
             "cumulative_reward": self._cumulative_reward,
             "evidence_found": list(self._relevant_evidence_found),
             "wrong_interventions": self._wrong_interventions,
+            "service_statuses": {
+                name: service.status.value
+                for name, service in sorted(self._service_registry.items())
+            },
+            "service_metrics": {
+                name: service.current_metrics
+                for name, service in sorted(self._service_registry.items())
+                if service.current_metrics
+            },
+            "service_error_logs": {
+                name: service.error_logs
+                for name, service in sorted(self._service_registry.items())
+                if service.error_logs
+            },
+            "cascade_impact": self._cascade_impact,
         }
 
     def grade(self) -> float:
@@ -263,6 +295,89 @@ class BaseIncidentEnv(ABC):
         """Clear episode trajectory (for memory management)."""
         self._episode_steps = []
         self._current_trajectory = None
+
+    def _reset_service_simulation(self) -> None:
+        """Create isolated mutable service state for this episode."""
+        self._service_registry = deepcopy(SERVICE_REGISTRY)
+        self._service_simulator = ServiceSimulator(self._service_registry)
+        self._active_fault_services = set()
+        self._cascade_impact = {}
+
+    def _propagate_task_faults(self) -> None:
+        """Initialize service graph state from the hidden task root cause(s)."""
+        if self._task is None or self._service_simulator is None:
+            return
+
+        fault_specs = [(self._task.get("fault_service"), self._task.get("fault_type"))]
+        if self._task.get("fault_service_2"):
+            fault_specs.append((self._task.get("fault_service_2"), self._task.get("fault_type_2")))
+
+        affected_services: Set[str] = set()
+        cascade_chain: list[str] = []
+        critical_services: Set[str] = set()
+
+        for service_name, fault_type in fault_specs:
+            if not service_name or service_name not in self._service_registry:
+                continue
+
+            self._active_fault_services.add(service_name)
+            impact = self._service_simulator.propagate_failure(
+                root_service=service_name,
+                fault_type=fault_type or "dependency_failure",
+            )
+            affected_services.update(impact["affected_services"])
+            cascade_chain.extend(impact["cascade_chain"])
+            critical_services.update(impact["critical_services_affected"])
+
+        self._cascade_impact = {
+            "root_services": sorted(self._active_fault_services),
+            "affected_services": sorted(affected_services),
+            "affected_count": len(affected_services),
+            "cascade_chain": cascade_chain,
+            "critical_services_affected": sorted(critical_services),
+            "critical_path_broken": bool(critical_services),
+        }
+
+    def _trigger_cascade_service(self, service_name: Optional[str]) -> None:
+        """Mark a timed cascade victim in the same service graph state."""
+        if not service_name or service_name not in self._service_registry:
+            return
+
+        service = self._service_registry[service_name]
+        if service.status == ServiceStatus.HEALTHY:
+            service.status = ServiceStatus.DEGRADED
+        service.root_cause_fault = self._task.get("cascade_fault") if self._task else None
+
+    def _apply_action_to_service_state(
+        self,
+        action: Action,
+        observation: Observation,
+        reward: Reward,
+    ) -> None:
+        """Keep the runtime service graph aligned with observations/actions."""
+        if self._service_simulator is None:
+            return
+
+        if action.action_type == "check_metrics" and observation.metrics:
+            for service_name, metrics in observation.metrics.items():
+                if service_name not in self._service_registry or not isinstance(metrics, dict):
+                    continue
+
+                numeric_metrics = {
+                    metric: float(value)
+                    for metric, value in metrics.items()
+                    if isinstance(value, (int, float))
+                }
+                self._service_simulator.update_metrics(service_name, numeric_metrics)
+
+        elif action.action_type == "read_logs" and action.target in self._service_registry:
+            self._service_simulator.add_error_log(action.target, observation.message)
+
+        elif action.action_type in {"restart_service", "rollback_deployment"}:
+            if action.target in self._active_fault_services and reward.value > 0:
+                self._service_simulator.recover_service(action.target)
+            elif reward.value < 0:
+                self._wrong_interventions += 1
 
 
 class TrainingEnv(BaseIncidentEnv):

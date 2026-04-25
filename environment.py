@@ -1,4 +1,4 @@
-﻿"""
+"""
 Main environment module â€” modular re-export wrapper.
 
 This module provides backward compatibility by re-exporting from:
@@ -31,9 +31,14 @@ from base_env import (
     TrainingEnv,
     TrajectoryStep,
 )
+from models import Action
+from services import SERVICE_REGISTRY
 from tasks import TASKS
 
+SERVICES = list(SERVICE_REGISTRY.keys())
+
 __all__ = [
+    "Action",
     "BaseIncidentEnv",
     "TrainingEnv",
     "BenchmarkEnv",
@@ -41,5 +46,6 @@ __all__ = [
     "TrajectoryStep",
     "EpisodeTrajectory",
     "TASKS",
+    "SERVICES",
 ]
 

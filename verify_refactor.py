@@ -3,6 +3,11 @@ Comprehensive modular refactor verification test
 """
 import sys
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8")
+
 print("=" * 60)
 print("MODULAR REFACTOR VERIFICATION")
 print("=" * 60)
