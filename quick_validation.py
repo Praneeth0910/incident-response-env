@@ -2,6 +2,13 @@
 Quick validation script - checks critical training blockers only.
 """
 import sys
+import os
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+# Fix encoding
+import io
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
 from environment import IncidentResponseEnv, TASKS
 from training.expert_agent import ExpertAgent
 from models import Action
