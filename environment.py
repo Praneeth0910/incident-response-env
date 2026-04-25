@@ -538,7 +538,7 @@ def _compute_sequence_bonus(evidence_found: set, action_type: str) -> float:
         elif evidence_count == 1:
             return 0.6    # partial — rushed but had some evidence
         else:
-            return 0.2    # very rushed — penalised via multiplier
+            return 0.0    # blind action — no reward at all
 
     if action_type == "declare_rca":
         evidence_count = sum([has_logs, has_metrics, has_health])
@@ -796,9 +796,7 @@ class IncidentResponseEnv:
 
             # ── rollback_deployment ───────────────────────────────────────────
             elif action.action_type == "rollback_deployment":
-                _rollback_fixes = ("bad_deployment", "canary_misconfiguration",
-                                   "cert_expired", "rate_limit_exceeded",
-                                   "slow_query", "clock_skew")
+                _rollback_fixes = ("bad_deployment", "canary_misconfiguration")
                 seq_bonus = _compute_sequence_bonus(
                     self._relevant_evidence_found, "rollback_deployment"
                 )
@@ -937,11 +935,11 @@ class IncidentResponseEnv:
         if not done:
             progress = self._step_count / max_steps
             if progress > 0.5:
-                # Scale DOWN positive rewards (urgency), scale UP negative rewards
-                if reward_value > 0:
-                    scale        = 0.99 - 0.4 * ((progress - 0.5) / 0.5)
-                    reward_value = round(reward_value * scale, 4)
-                else:
+                # Only scale UP negative rewards for urgency
+                # Positive rewards are NOT scaled down - doing the right thing late
+                # is still better than doing nothing. Time bonus in declare_rca
+                # already incentivizes efficiency.
+                if reward_value < 0:
                     # Negative rewards get WORSE under time pressure
                     scale        = 1.0 + 0.3 * ((progress - 0.5) / 0.5)
                     reward_value = round(reward_value * scale, 4)

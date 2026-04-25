@@ -29,18 +29,18 @@ if task['fault_type'] == 'memory_leak' and task['fault_service'] == 'notificatio
 else:
     print("   !! - config incorrect\n")
 
-# Test task_canary_poison (rollback_deployment should give reward)
-print("3. task_canary_poison (rollback_deployment reward):")
+# Test task_canary_poison (rollback_deployment should give 0.0 for blind action)
+print("3. task_canary_poison (rollback_deployment with no evidence):")
 env = IncidentResponseEnv()
 obs = env.reset('task_canary_poison', seed=42)
 action = Action(action_type='rollback_deployment', target='api-gateway')
 obs, reward, done, info = env.step(action)
 print(f"   Rollback api-gateway: reward={reward.value} ({reward.reason[:50]})")
-print(f"   Expected: ~0.07 for blind rollback (0.35 base × 0.2 sequence bonus for no evidence)")
-if reward.value >= 0.05:
+print(f"   Expected: 0.0 for blind rollback (no reward for actions without evidence)")
+if reward.value == 0.0:
     print("   OK - PASS\n")
 else:
-    print("   !! - FAIL\n")
+    print(f"   !! - FAIL (got {reward.value}, expected 0.0)\n")
 
 # Test task_thread_starvation (restart_service should work)
 print("4. task_thread_starvation (restart_service):")

@@ -97,12 +97,12 @@ def _cicd_reward(action, fault, step_count, max_s, ev: EvidenceTracker) -> float
     # Fix actions
     elif action in _CICD_FIX_ACTIONS:
         ev_count = ev.evidence_count_cicd()
-        multipliers = {0: 0.1, 1: 0.5}
+        if ev_count == 0:
+            return 0.0  # no reward for blind action
+        multipliers = {1: 0.5}
         mult = multipliers.get(ev_count, 1.0)
         base = 0.30
         reward = base * mult
-        if ev_count == 0:
-            reward -= 0.20
 
     return max(-1.0, min(1.0, reward))
 
