@@ -628,7 +628,7 @@ class IncidentResponseEnv:
         self._history = []
         return Observation(
             message=(
-                f"Incident active. {self._task['description']} "
+                f"Incident active. "
                 f"You have {self._task['max_steps']} steps. Investigate carefully."
             ),
             step=0,
@@ -894,8 +894,11 @@ class IncidentResponseEnv:
                 # Domain-specific action mappings for reward computation
                 cicd_reward_map = {
                     "read_logs": "read_job_logs",
-                    "check_metrics": "check_runner_status",
+                    "check_metrics": "get_cluster_metrics",
                     "check_health": "check_runner_status",
+                    "run_db_query": "run_db_query",
+                    "restart_service": "restart_service",
+                    "rollback_deployment": "rollback_deployment",
                     "declare_rca": "declare_rca",
                 }
                 kafka_reward_map = {

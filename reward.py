@@ -88,7 +88,7 @@ def _cicd_reward(action, fault, step_count, max_s, ev: EvidenceTracker) -> float
     elif action == "check_runner_status":
         ev.runner_status_checked = True
         reward = 0.12 if fault in ("runner_queue_flood", "runner_compromise") else 0.04
-    elif action == "check_pipeline_status" or action == "check_metrics":
+    elif action == "check_pipeline_status" or action == "check_metrics" or action == "get_cluster_metrics":
         reward = 0.05
     elif action == "run_db_query":
         ev.audit_log_read = True

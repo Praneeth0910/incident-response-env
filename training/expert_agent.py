@@ -51,7 +51,9 @@ class ExpertAgent:
 
     def _cicd_plan(self, fault: str) -> list[dict]:
         """Optimal investigation path for CI/CD faults."""
-        svc = self.task.get("fault_service", "auth-service")
+        svc = self.task.get("fault_service")
+        if not svc:
+            raise ValueError(f"Task {self.task.get('name', 'UNKNOWN')} missing required 'fault_service' field")
         
         # Start with observation actions
         base = [
