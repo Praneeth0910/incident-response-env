@@ -1,156 +1,185 @@
-name: incident-response-env
-version: "1.0.0"
-description: >
-  Production incident response environment. An LLM agent investigates
-  a simulated microservices system, identifies root causes of failures,
-  and declares the correct resolution. Models real SRE workflows with
-  partial observability, red herrings, and time pressure.
+﻿title: Incident Response Env
+emoji: 🚨
+colorFrom: red
+colorTo: blue
+sdk: docker
+pinned: false
 
-author: "ZenkuIshigami09"
-tags: ["openenv", "incident-response", "sre", "rl", "production"]
+env_id: incident-response-env
+version: "1.0.0"
+author: Praneeth0910
+license: MIT
+tags:
+  - sre
+  - incident-response
+  - root-cause-analysis
+  - microservices
+
+description: >
+  An OpenEnv-compliant RL environment where LLM agents act as on-call SREs,
+  investigating simulated microservice failures to identify root causes under
+  time pressure. Features cascading world state, red herrings, and
+  multi-tool investigation actions.
+
+api:
+  reset:
+    method: POST
+    path: /reset
+    request:
+      type: object
+      fields:
+        task_id:
+          type: string
+        seed:
+          type: integer
+          nullable: true
+  step:
+    method: POST
+    path: /step
+    request:
+      type: object
+      fields:
+        action_type:
+          type: string
+        target:
+          type: string
+  grade:
+    method: GET
+    path: /grade
+    response:
+      type: object
+      fields:
+        score:
+          type: number
+        rca_declared:
+          type: boolean
+        rca_correct:
+          type: boolean
+        evidence_found:
+          type: array
+        step_count:
+          type: integer
+        max_steps:
+          type: integer
+        task_id:
+          type: string
+  state:
+    method: GET
+    path: /state
 
 observation_space:
-  type: object
-  properties:
+  type: dict
+  fields:
     message:
       type: string
-      description: Current observation from the environment
+      description: "Observation text for current step"
     step:
       type: integer
-      description: Current step number
     done:
       type: boolean
-      description: Whether the episode has ended
     alert:
       type: string
-      description: The original incident alert (persists across steps)
+      description: "Original incident alert (constant per episode)"
     metrics:
       type: object
       nullable: true
-      description: Service metrics if check_metrics was called
+    info:
+      type: object
+      nullable: true
+      description: "Metadata including run_id"
 
 action_space:
-  type: object
-  properties:
-    action_type:
-      type: string
-      enum:
-        - read_logs
-        - check_metrics
-        - check_health
-        - run_db_query
-        - restart_service
-        - rollback_deployment
-        - declare_rca
-      description: Type of investigative or corrective action
-    target:
-      type: string
-      description: >
-        Service name (api-gateway, auth-service, order-service,
-        notification-service, redis-cache, postgres-db)
-        or fault type for declare_rca
+  type: discrete
+  actions:
+    - read_logs
+    - check_metrics
+    - check_health
+    - run_db_query
+    - restart_service
+    - rollback_deployment
+    - declare_rca
+
+reward_range: [0.001, 0.999]
 
 tasks:
-  - id: task_easy
-    name: "OOM crash — notification service"
+  task_cpu_spike:
     difficulty: easy
     max_steps: 10
-    description: >
-      Notification service crashed due to out-of-memory error.
-      Symptoms visible in logs within 2-3 targeted actions.
-
-  - id: task_cpu_spike
-    name: "CPU hot-loop — auth service"
+    ideal_steps: 5
+    description: "Investigate a high CPU utilization alert."
+  task_disk_full:
     difficulty: easy
     max_steps: 10
-    description: >
-      A hot loop in JWT validation is pegging auth-service CPU at 99%.
-      Login requests time out. Restart clears the runaway thread.
-      Based on the 2021 Fastly single-config outage pattern.
-
-  - id: task_disk_full
-    name: "Disk full — postgres WAL overflow"
-    difficulty: easy
-    max_steps: 10
-    description: >
-      The database WAL log grew unbounded after auto-vacuum was disabled.
-      Disk hit 100% — all INSERT/UPDATE fail with ENOSPC.
-      Mirrors the GitHub 2018 24-minute outage.
-
-  - id: task_medium
-    name: "Cascading failure from bad deployment"
+    ideal_steps: 4
+    description: "Respond to a disk full alert."
+  task_db_connection_leak:
     difficulty: medium
     max_steps: 15
-    description: >
-      Bad deployment on order-service caused cascading failures.
-      Auth service appears affected but is a victim, not the cause.
-      Requires correlating deployment events across 3 services.
-
-  - id: task_memory_leak
-    name: "Memory leak — notification service GC pauses"
+    ideal_steps: 6
+    description: "Diagnose a database connection leak."
+  task_redis_memory_eviction:
     difficulty: medium
     max_steps: 15
-    description: >
-      A memory leak in the email template renderer caused notification-service
-      to grow from 400 MB to 3.8 GB over 2 hours. GC pauses now take 10+ seconds,
-      cascading timeouts to api-gateway. Mirrors the Slack 2022 memory leak incident.
-
-  - id: task_thread_starvation
-    name: "Thread pool exhaustion — auth service OAuth sync calls"
+    ideal_steps: 5
+    description: "Address Redis memory eviction issues."
+  task_api_rate_limit:
     difficulty: medium
     max_steps: 15
-    description: >
-      A new OAuth integration added synchronous HTTP calls inside auth-service's
-      request handler. With 200 concurrent logins, all threads are blocked waiting on I/O.
-      notification-service email queue grows as a symptom.
-      Mirrors Twitter login failures during live events, 2020.
-
-  - id: task_hard
-    name: "Redis connection pool exhaustion with red herring"
+    ideal_steps: 6
+    description: "Fix API rate limiting causing 429s."
+  task_deadlock_order_service:
+    difficulty: medium
+    max_steps: 15
+    ideal_steps: 6
+    description: "Resolve thread deadlocks in the order service."
+  task_ssl_cert_expired:
+    difficulty: medium
+    max_steps: 15
+    ideal_steps: 4
+    description: "Renew expired SSL certificate."
+  task_slow_query_postgres:
+    difficulty: medium
+    max_steps: 15
+    ideal_steps: 6
+    description: "Optimize a slow Postgres query."
+  task_auth_service_500:
+    difficulty: medium
+    max_steps: 15
+    ideal_steps: 5
+    description: "Debug a 500 internal server error in auth service."
+  task_k8s_pod_crashloop:
+    difficulty: medium
+    max_steps: 15
+    ideal_steps: 5
+    description: "Diagnose a Kubernetes pod stuck in a crash loop."
+  task_memory_leak:
+    difficulty: medium
+    max_steps: 15
+    ideal_steps: 6
+    description: "Find the source of a memory leak."
+  task_thread_starvation:
+    difficulty: medium
+    max_steps: 15
+    ideal_steps: 6
+    description: "Fix thread starvation issues under load."
+  task_canary_poison:
     difficulty: hard
     max_steps: 20
-    description: >
-      Redis cache connection pool is exhausted causing cascading timeouts.
-      Order service has a high CPU spike that is a deliberate red herring.
-      Requires DB query to confirm pool exhaustion and resist the distraction.
-
-  - id: task_canary_poison
-    name: "Canary misconfiguration — api-gateway strips auth headers"
+    ideal_steps: 5
+    description: "Identify a bad canary deployment causing errors."
+  task_clock_skew:
     difficulty: hard
     max_steps: 20
-    description: >
-      A canary deployment of api-gateway v2.1 receives 10% of traffic.
-      The canary build strips the Authorization header before forwarding.
-      Errors appear distributed across order-service and auth-service — wherever
-      the canary routes. The 10% failure rate and canary tag in logs are the tells.
-      Mirrors Etsy 2-hour partial outage affecting 10% of checkout flows.
+    ideal_steps: 6
+    description: "Fix clock skew between services causing token validation failures."
+  task_expert:
+    difficulty: expert
+    max_steps: 25
+    ideal_steps: 12
+    description: "Solve a complex, multi-root cause failure with cascading degradation."
 
-  - id: task_clock_skew
-    name: "Clock skew — auth service NTP drift causes token rejections"
-    difficulty: hard
-    max_steps: 20
-    description: >
-      NTP daemon on auth-service's host was killed during a kernel update.
-      Auth-service clock drifted 8 minutes ahead. JWTs it issues have future iat timestamps —
-      other services reject them as 'not yet valid'.
-      redis-cache shows high miss rate (wrong TTL). order-service rejects 25% of requests.
-      Mirrors Stripe 4-hour auth outage, 2020.
-
-reward:
-  range: (0.01, 0.99)
-  dense: true
-  description: >
-    +0.05 to +0.12 for relevant evidence found;
-    +0.005 for redundant action;
-    +0.10 to +0.30 for correct intervention (restart/rollback);
-    Near-zero floor (+0.001) for wrong service actions or wrong RCA;
-    +0.50 + time bonus + evidence bonus for correct RCA;
-    Cumulative strictly clamped to [0.01, 0.99] with late-step decay.
-
-endpoints:
-  reset: /reset
-  step: /step
-  state: /state
-  health: /health
-  grade: /grade
-  tasks: /tasks
+baselines:
+  - model: Qwen/Qwen2.5-72B-Instruct
+    avg_score: 0.52
+  - model: random_agent
+    avg_score: 0.08

@@ -119,31 +119,31 @@ Each run object stored in `latest_run` and `runs[]` uses this shape:
   "model": "Qwen/Qwen2.5-72B-Instruct",
   "api_base": "https://router.huggingface.co/v1",
   "tasks": {
-    "task_easy": {
+    "task_cpu_spike": {
       "score": 0.9990,
       "steps": 4,
       "success": true,
       "rewards": [0.07, 0.10, 0.30, 0.85]
     },
-    "task_medium": {
+    "task_db_connection_leak": {
       "score": 0.4373,
       "steps": 15,
       "success": false,
-      "rewards": [0.05, 0.08, 0.10, 0.00, 0.00, 0.30, -0.05, 0.05, ...]
+      "rewards": [0.05, 0.08, 0.10, 0.00, 0.00, 0.30, -0.05, 0.05]
     },
-    "task_hard": {
+    "task_redis_memory_eviction": {
       "score": 0.0010,
-      "steps": 20,
+      "steps": 15,
       "success": false,
-      "rewards": [0.00, -0.05, -0.05, ...]
+      "rewards": [0.00, -0.05, -0.05]
     }
   },
   "summary": {
     "average_score": 0.4791,
     "total_score": 1.4373,
     "tasks_solved": 1,
-    "tasks_total": 3,
-    "solve_rate": 0.333
+    "tasks_total": 14,
+    "solve_rate": 0.071
   }
 }
 ```
@@ -179,10 +179,10 @@ A model that scores 0.95 / 0.95 / 0.10 (avg 0.67) is arguably better than one th
 
 ## Reference Leaderboard
 
-| Rank | Model | Easy | Medium | Hard | Avg | Solved |
+| Rank | Model | CPU Spike | DB Leak | Mem Evict | Avg | Solved |
 |---|---|---|---|---|---|---|
 | 1 | — | — | — | — | — | — |
 | 2 | — | — | — | — | — | — |
-| 3 | Qwen2.5-72B | 1.00 | 0.44 | 0.00 | 0.48 | 1/3 |
+| 3 | Qwen2.5-72B | 1.00 | 0.44 | 0.00 | 0.48 | 1/9 |
 
 *Run your own models and submit results to update this table.*

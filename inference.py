@@ -20,10 +20,7 @@ from openai import OpenAI
 # ── Config — READ STRICTLY FROM ENV (evaluator injection) ─────────────────────
 print("[BOOTSTRAP] Checking for required environment variables...", flush=True)
 
-if "API_BASE_URL" not in os.environ:
-    print("[CRITICAL] API_BASE_URL not set in environment", file=sys.stderr, flush=True)
-    sys.exit(1)
-API_BASE_URL = os.environ["API_BASE_URL"]
+API_BASE_URL = os.environ.get("API_BASE_URL", "https://api.openai.com/v1")
 print(f"[BOOTSTRAP] API_BASE_URL = {API_BASE_URL}", flush=True)
 
 if "API_KEY" not in os.environ:
@@ -39,7 +36,7 @@ print(f"[BOOTSTRAP] MODEL_NAME = {MODEL_NAME}", flush=True)
 print(f"[BOOTSTRAP] ENV_BASE_URL = {ENV_BASE_URL}", flush=True)
 
 BENCHMARK = "incident-response-env"
-TASKS     = ["task_easy", "task_medium", "task_hard"]
+from task_config import ALL_TASKS as TASKS
 
 SYSTEM_PROMPT = """You are an expert Site Reliability Engineer responding to a production incident.
 You must investigate a microservices system and find the root cause of the failure.
@@ -82,7 +79,7 @@ def log_end(success: bool, steps: int, score: float, rewards: list) -> None:
     rewards_str = ",".join(f"{r:.4f}" for r in rewards)
     print(
         f"[END] success={str(success).lower()} steps={steps} "
-        f"score={score:.4f} rewards={rewards_str}",
+        f"rewards={rewards_str}",
         flush=True,
     )
 
@@ -180,7 +177,7 @@ def run_episode(client: OpenAI, task_id: str) -> dict:
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user",   "content": f"ALERT: {alert}\n\n{message}"},
         ]
-        max_steps = {"task_easy": 10, "task_medium": 15, "task_hard": 20}[task_id]
+        max_steps = 15  # All 9 incident tasks use same step limit
 
         for step in range(1, max_steps + 1):
             print(f"[EPISODE] Step {step}/{max_steps}", flush=True)

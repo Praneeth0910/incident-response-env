@@ -33,12 +33,13 @@ postgres-db          ← check with run_db_query for connection issues
 ### Fault Types You Will Encounter
 | Fault | Signature | Correct Fix |
 |---|---|---|
-| `oom_crash` | memory_pct=99, error_rate=1.0, service DOWN | `restart_service` |
-| `bad_deployment` | high latency, env var errors in logs, circuit breaker | `rollback_deployment` |
+| `cpu_spike` | cpu_pct=99, error_rate=0.9+, service degraded | `restart_service` |
 | `connection_pool_exhausted` | active_connections=max_connections, timeouts | `run_db_query` to confirm, then `declare_rca` |
+| `memory_eviction` | cache miss rate high, latency spikes | `restart_service` -> `declare_rca` |
+| `deadlock` | postgres throwing deadlock errors | `run_db_query` to confirm -> `declare_rca` |
 
 ### Red Herrings
-Hard and medium tasks contain **deliberately misleading signals**:
+Tasks contain **deliberately misleading signals**:
 - A service with high CPU that is NOT the root cause
 - The `api-gateway` always looks bad — it is a **victim**, never the cause
 - Do not let a single anomalous metric send you down the wrong path
@@ -59,8 +60,8 @@ Hard and medium tasks contain **deliberately misleading signals**:
 
 **CRITICAL RULES:**
 - Respond with **ONLY valid JSON** — no prose, no markdown fences, no explanation
-- **Never repeat an action** you have already taken — penalty is −0.05 per repeat
-- **Never restart or rollback** before you have evidence — wrong target = −0.15 to −0.20
+- **Never repeat an action** you have already taken — returns +0.005 (minimum floor) — no negative penalty by design
+- **Never restart or rollback** before you have evidence — wrong target = +0.001 (minimum floor)
 - **Never declare RCA** unless you have corroborating evidence from at least 2 action types
 
 ---
@@ -87,7 +88,7 @@ Hard and medium tasks contain **deliberately misleading signals**:
 8. declare_rca → <confirmed faulty service>
 ```
 
-Ideal episode = **3–8 steps**. Max steps = 10/15/20 depending on difficulty.
+Ideal episode = **3–8 steps**. Max steps = 15 for all tasks.
 
 ---
 
@@ -98,12 +99,33 @@ Ideal episode = **3–8 steps**. Max steps = 10/15/20 depending on difficulty.
 | `+0.08` to `+0.12` | You found relevant evidence | Continue investigating same service |
 | `+0.05` | Weak signal (gateway logs, health check) | Don't stop here — dig deeper |
 | `0.00` | No signal — wrong service | Pivot to a different service |
-| `−0.05` | Repeated action | You already checked this — move on |
-| `−0.15` to `−0.20` | Wrong fix (restart/rollback wrong service) | Episode recovery is difficult now |
-| `+0.30` | Correct remediation | Proceed to declare_rca immediately |
-| `+0.50` to `+1.00` | Correct RCA declared | Episode complete |
+| `+0.005` | Redundant action (already checked this) | Move on to new actions |
+| `-0.30` | Wrong service restart/rollback | Serious mistake — gather evidence first next time |
+| `-0.40` | Wrong RCA declared | Overconfident diagnosis cost you |
+| `+0.30` | Correct restart/rollback | Good! Proceed to declare_rca |
+| `+0.50` to `+0.99` | Correct RCA declared | Episode complete |
 
-**Time penalty** activates after 50% of steps are used. After that, every step costs an additional small negative reward. Be decisive.
+### 🔑 Sequence Bonus: Rewarding Investigation, Not Just Results
+
+**Key insight:** Two agents can both fix the right service, but **the agent that investigated first gets higher rewards**.
+
+**Sequence Bonus Multipliers:**
+- **2+ evidence types before acting** → `×1.0` multiplier (full reward)
+- **1 evidence type before acting** → `×0.6` multiplier (60% reward)
+- **0 evidence types (blind guess)** → `×0.2` multiplier (20% reward)
+
+**Example:**
+```
+Correct restart of postgres-db = +0.30 base reward
+
+Agent A (checked logs + metrics): +0.30 × 1.0 = +0.30 ✓
+Agent B (checked only logs):      +0.30 × 0.6 = +0.18
+Agent C (guessed blind):          +0.30 × 0.2 = +0.06
+```
+
+**This means:** Spend 3-5 steps gathering evidence, then act decisively. Don't guess immediately, but don't over-investigate either.
+
+**Time pressure** activates after 50% of steps are used. After that, every step costs an additional small negative reward. Be decisive about declaring RCA once you have 2-3 evidence types.
 
 ---
 
@@ -144,21 +166,21 @@ Before outputting your JSON, run through this internally:
 
 ---
 
-## 9. Example Episode (task_easy — optimal)
+## 9. Example Episode (task_cpu_spike — optimal)
 
 ```
-ALERT: High error rate detected. API gateway reporting 500s.
+ALERT: Login latency p99 > 8s. Auth service CPU at 99%. Users cannot sign in.
 
-Step 1: {"action_type": "check_health", "target": "notification-service"}
-→ Reward: +0.07 | Health: DOWN
+Step 1: {"action_type": "check_metrics", "target": "auth-service"}
+→ Reward: +0.08 | CPU 99%, Thread Pool Active: 200
 
-Step 2: {"action_type": "read_logs", "target": "notification-service"}
-→ Reward: +0.10 | [ERROR] OutOfMemoryError: Java heap space. Killed by OOM killer.
+Step 2: {"action_type": "read_logs", "target": "auth-service"}
+→ Reward: +0.10 | [ERROR] thread saturation — 200/200 threads active. Hot loop detected in JWTValidator
 
-Step 3: {"action_type": "restart_service", "target": "notification-service"}
+Step 3: {"action_type": "restart_service", "target": "auth-service"}
 → Reward: +0.30 | Service restarted successfully.
 
-Step 4: {"action_type": "declare_rca", "target": "notification-service"}
+Step 4: {"action_type": "declare_rca", "target": "auth-service"}
 → Reward: +0.85 | Correct. Episode complete. Score: 1.00
 ```
 
