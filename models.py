@@ -21,6 +21,7 @@ class Observation(BaseModel):
     done: bool
     alert: str
     metrics: Optional[Dict[str, Any]] = None
+    info: Optional[Dict[str, Any]] = None
 
 
 class Reward(BaseModel):
@@ -35,16 +36,37 @@ class StepResponse(BaseModel):
     info: Dict[str, Any]
 
 
+class TaskDetail(BaseModel):
+    """Full task metadata for dashboard detail panels."""
+    id: str = Field(..., description="Task ID")
+    name: str
+    difficulty: Literal["easy", "medium", "hard", "expert"]
+    max_steps: int
+    description: str
+    ideal_steps: int
+    fault_service: str
+    fault_type: str
+    red_herrings: list[str]
+    alert: str
+
+
 class ResetRequest(BaseModel):
     task_id: Literal[
-        "task_easy",
         "task_cpu_spike",
+        "task_db_connection_leak",
+        "task_redis_memory_eviction",
+        "task_api_rate_limit",
+        "task_deadlock_order_service",
+        "task_ssl_cert_expired",
+        "task_slow_query_postgres",
+        "task_auth_service_500",
+        "task_k8s_pod_crashloop",
         "task_disk_full",
-        "task_medium",
         "task_memory_leak",
         "task_thread_starvation",
-        "task_hard",
         "task_canary_poison",
         "task_clock_skew",
-    ] = "task_easy"
+        "task_expert",
+        "task_expert_long_horizon",
+    ] = "task_cpu_spike"
     seed: Optional[int] = None

@@ -1,17 +1,47 @@
-__pycache__/
-*.py[cod]
-*$py.class
-.pytest_cache/
-.coverage
-htmlcov/
-.venv/
-venv/
-ENV/
-env/
-.env
-.venv
+# editor
 .vscode/
 .idea/
 *.swp
 *.swo
+
+# python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.eggs/
+*.egg
+
+# python packaging artifacts
+*.egg-info/
+dist/
+build/
+
+# environment & secrets
+.env
+.env.*
+*.local
+.venv
+.venv/
+venv/
+ENV/
+env/
+
+# test cache
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# IDEs
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+
+# temporary files
+*.tmp
+*.bak
+*~
+
+# benchmark output
 benchmark.json

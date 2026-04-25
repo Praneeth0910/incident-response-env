@@ -37,18 +37,18 @@ Start a new episode.
 **Request:**
 ```json
 {
-  "task_id": "task_easy",   // "task_easy" | "task_medium" | "task_hard"
-  "seed": 42                // optional int — for reproducible episodes
+  "task_id": "task_cpu_spike",   // Choose from the 14 available tasks
+  "seed": 42                     // optional int — for reproducible episodes
 }
 ```
 
 **Response:**
 ```json
 {
-  "message": "Incident active. Notification service crashed...",
+  "message": "Incident active. A hot loop in JWT validation is pegging auth-service CPU at 99%...",
   "step": 0,
   "done": false,
-  "alert": "ALERT: High error rate detected. API gateway reporting 500s. Latency p99: 3.8s.",
+  "alert": "ALERT: Login latency p99 > 8s. Auth service CPU at 99%. Users cannot sign in.",
   "metrics": null
 }
 ```
@@ -94,16 +94,16 @@ Inspect current episode state (includes hidden ground truth — for debugging on
 **Response:**
 ```json
 {
-  "task_id": "task_easy",
-  "task_name": "OOM crash — single service",
+  "task_id": "task_cpu_spike",
+  "task_name": "Auth service CPU hard loop",
   "difficulty": "easy",
-  "hidden_fault_service": "notification-service",
-  "hidden_fault_type": "oom_crash",
+  "hidden_fault_service": "auth-service",
+  "hidden_fault_type": "cpu_spike",
   "step_count": 3,
   "max_steps": 10,
   "done": false,
   "cumulative_reward": 0.27,
-  "evidence_found": ["logs_fault_svc", "health_fault_svc"]
+  "evidence_found": ["logs_fault_svc", "metrics_fault_svc"]
 }
 ```
 
@@ -139,13 +139,12 @@ List all available tasks.
 **Response:**
 ```json
 {
-  "task_easy": {
-    "name": "OOM crash — single service",
+  "task_cpu_spike": {
+    "name": "Auth service CPU hard loop",
     "difficulty": "easy",
     "max_steps": 10,
-    "description": "Notification service crashed due to out-of-memory error."
-  },
-  ...
+    "description": "A hot loop in JWT validation is pegging auth-service CPU at 99%."
+  }
 }
 ```
 
@@ -153,41 +152,138 @@ List all available tasks.
 
 ## Task Definitions
 
-### task_easy — OOM Crash
+### 1. task_cpu_spike — Auth Service CPU hard loop
 | Property | Value |
 |---|---|
 | Difficulty | Easy |
 | Max Steps | 10 |
-| Ideal Steps | 3–4 |
-| Fault Service | `notification-service` |
-| Fault Type | `oom_crash` |
+| Ideal Steps | 5 |
+| Fault Service | `auth-service` |
+| Fault Type | `cpu_spike` |
 | Red Herrings | None |
-| Key Signal | `memory_pct: 99`, `error_rate: 1.0`, health=DOWN |
+| Key Signal | `cpu_pct: 99`, Logs: `hot loop detected in JWTValidator.validate()` |
 | Correct Fix | `restart_service` → `declare_rca` |
 
-### task_medium — Bad Deployment
+### 2. task_db_connection_leak — Database connection pool exhaustion
 | Property | Value |
 |---|---|
 | Difficulty | Medium |
 | Max Steps | 15 |
-| Ideal Steps | 5–7 |
+| Ideal Steps | 6 |
 | Fault Service | `order-service` |
-| Fault Type | `bad_deployment` |
-| Red Herrings | `auth-service` (appears degraded) |
-| Key Signal | Logs: `env var DB_HOST missing`, `circuit breaker open` |
-| Correct Fix | `rollback_deployment` → `declare_rca` |
+| Fault Type | `connection_pool_exhausted` |
+| Red Herrings | `postgres-db` (appears to be failing) |
+| Key Signal | DB Query: `active_connections: 500` / `waiting_queries: 847` |
+| Correct Fix | `run_db_query` to confirm → `declare_rca` |
 
-### task_hard — Connection Pool Exhaustion
+### 3. task_redis_memory_eviction — Redis cache memory eviction cascade
+| Property | Value |
+|---|---|
+| Difficulty | Medium |
+| Max Steps | 15 |
+| Ideal Steps | 5 |
+| Fault Service | `redis-cache` |
+| Fault Type | `memory_eviction` |
+| Red Herrings | `api-gateway` |
+| Key Signal | Cache miss rate: `89%`, API latency high |
+| Correct Fix | `restart_service` → `declare_rca` |
+
+### 4. task_disk_full — PostgreSQL WAL overflow (ENOSPC)
+| Property | Value |
+|---|---|
+| Difficulty | Easy |
+| Max Steps | 10 |
+| Ideal Steps | 4 |
+| Fault Service | `postgres-db` |
+| Fault Type | `disk_full` |
+| Red Herrings | None |
+| Key Signal | Logs: `ENOSPC: No space left on device`, Metrics: `disk_used_pct: 100`, `wal_size_gb: 48` |
+| Correct Fix | `declare_rca` (disk_full) |
+
+### 5. task_memory_leak — Notification Service GC Pauses
+| Property | Value |
+|---|---|
+| Difficulty | Medium |
+| Max Steps | 15 |
+| Ideal Steps | 6 |
+| Fault Service | `notification-service` |
+| Fault Type | `memory_leak` |
+| Red Herrings | None |
+| Key Signal | Metrics: `memory_pct: 98`, `gc_pause_ms: 8000-14000`, Logs: `Email Template Cache holding 3.4GB` |
+| Correct Fix | `restart_service` → `declare_rca` |
+
+### 6. task_thread_starvation — Auth Service Thread Pool Exhaustion (OAuth)
+| Property | Value |
+|---|---|
+| Difficulty | Medium |
+| Max Steps | 15 |
+| Ideal Steps | 6 |
+| Fault Service | `auth-service` |
+| Fault Type | `thread_pool_exhausted` |
+| Red Herrings | None |
+| Key Signal | Metrics: `thread_pool_active: 200/200`, `latency_p99_ms: 30000`, Logs: `OAuthIdentityClient timeout after 30000ms` |
+| Correct Fix | `declare_rca` (thread_starvation) |
+
+### 7. task_canary_poison — API Gateway v2.1 Strips Auth Headers
 | Property | Value |
 |---|---|
 | Difficulty | Hard |
 | Max Steps | 20 |
-| Ideal Steps | 7–10 |
-| Fault Service | `redis-cache` |
-| Fault Type | `connection_pool_exhausted` |
-| Red Herrings | `order-service` (high CPU, looks suspicious) |
-| Key Signal | DB query: `active_connections=500/500`, `waiting_queries=847` |
-| Correct Fix | `run_db_query` to confirm → `declare_rca` |
+| Ideal Steps | 5 |
+| Fault Service | `api-gateway` |
+| Fault Type | `canary_misconfiguration` |
+| Red Herrings | `order-service`, `auth-service` (see 401 errors) |
+| Key Signal | 10% of requests fail with 401, Logs: `canary v2.1 stripping Authorization header` |
+| Correct Fix | `declare_rca` (canary_poison) |
+
+### 8. task_clock_skew — NTP Drift, JWT iat Rejected
+| Property | Value |
+|---|---|
+| Difficulty | Hard |
+| Max Steps | 20 |
+| Ideal Steps | 6 |
+| Fault Service | `auth-service` |
+| Fault Type | `clock_skew` |
+| Red Herrings | `redis-cache` (cache miss rate 68%), `order-service` (25% rejections) |
+| Key Signal | Metrics: `clock_drift_seconds: 480`, Logs: `JWT iat is in the future`, `NTP daemon not running` |
+| Correct Fix | `declare_rca` (clock_skew) |
+
+### 9. task_expert — Multi-Root-Cause: Redis + Auth Failures
+| Property | Value |
+|---|---|
+| Difficulty | Expert |
+| Max Steps | 25 |
+| Ideal Steps | 12 |
+| Fault Services | `redis-cache` (connection_pool_exhausted) AND `auth-service` (bad_deployment) |
+| Cascade | At step 8, `api-gateway` cascades due to upstream overload |
+| Red Herrings | `order-service`, `notification-service` |
+| Key Signal | Login failures 62%, orders failing 0%, multiple cascading signals |
+| Correct Fix | Must identify BOTH redis and auth issues, declare both in RCA |
+| Difficulty | Tests: Multi-root-cause diagnosis, understanding cascading signals |
+
+### 10. task_expert_long_horizon — Long-Horizon Cascade: Latent Secondary Fault (🚀 50 STEPS)
+| Property | Value |
+|---|---|
+| Difficulty | Expert |
+| Max Steps | **50** |
+| Ideal Steps | 25 |
+| Initial Fault | `postgres-db` slow_query causing gradual degradation |
+| Cascade Trigger | **At step 35** (not step 8), `order-service` cascades |
+| Root Cause | Quick restart (step 10–15) seems to fix it, but introduces query planner bug → secondary cascade |
+| Red Herrings | `api-gateway`, `redis-cache` |
+| Key Signal | Order latency steadily increasing: 500ms → 2000ms → 8000ms |
+| **Why Long-Horizon** | **Tests extended state tracking, planning over 50-step trajectory, avoiding quick-fix optimization traps** |
+| Challenge | Agent must distinguish between immediate symptom fix vs. correct structural fix; latent bug manifests much later |
+| Correct Fix | Deep investigation (15–25 steps) to identify secondary root cause, implement correct fix, avoid cascade |
+| Theme Alignment | **Hackathon Theme #2: Long-Horizon Planning** — pushes agents beyond shallow next-token reasoning |
+
+### *Additional Tasks Available (not detailed):*
+* `task_api_rate_limit` (api-gateway misconfiguration)
+* `task_deadlock_order_service` (database deadlock)
+* `task_ssl_cert_expired` (x509 cert expired)
+* `task_slow_query_postgres` (missing db index)
+* `task_auth_service_500` (null pointer exception)
+* `task_k8s_pod_crashloop` (unhandled exception in pod)
 
 ---
 
@@ -218,19 +314,25 @@ other tasks:              +0.01  # "limited signal"
 # restart_service
 correct service + oom:    +0.30  # "correct — oom_crash resolved"
 correct service + wrong:  +0.10  # "restarted but wrong fix type"
-wrong service:            -0.20  # "wrong service — cascading risk"
+wrong service:            -0.30  # "WRONG TARGET — serious penalty teaches caution"
 
 # rollback_deployment
 correct service + bad_dep: +0.30  # "correct rollback"
-correct service + wrong:   +0.05  # "rollback completed but wrong fix"
-wrong service:             -0.15  # "wrong target"
+correct service + wrong:   -0.10  # "rollback completed but wrong fix type"
+wrong service:             -0.30  # "WRONG TARGET — serious penalty teaches caution"
 
 # any repeated action
-                          -0.05  # "redundant action"
+                          +0.005  # "redundant action (minimum reward)"
 
 # declare_rca
-correct service:   +0.50 + time_bonus + evidence_bonus  (max 1.0)
-wrong service:     +0.00
+correct service:   0.50 × seq_bonus + time_bonus + evidence_bonus  (up to 0.999)
+partial match:     +0.10
+wrong service:     -0.40  # Hard penalty for overconfident guessing
+
+# DESIGN PHILOSOPHY: Hard SRE penalties enforce causal reasoning
+# Wrong interventions (wrong service/wrong fix) carry real cost (-0.10 to -0.30)
+# This forces agents to gather evidence before acting, not blind guessing.
+# All rewards are clamped to [0.001, 0.999] per competition rules, so no catastrophic spirals.
 ```
 
 ### Time Bonus (declare_rca only)
@@ -249,23 +351,33 @@ evidence_bonus = len(relevant_evidence_found) * 0.03
 ### Time Pressure (after 50% steps used)
 ```python
 if progress > 0.5:
-    time_penalty = -0.01 * ((progress - 0.5) / 0.5)
-    reward_value += time_penalty
+    scale = 0.99 - 0.5 * ((progress - 0.5) / 0.5)
+    reward_value = max(0.001, round(reward_value * scale, 4))
 ```
 
 ### Cumulative Reward
 ```python
-cumulative = sum(all_step_rewards)
-cumulative = max(-1.0, min(1.0, cumulative))  # clamped to [-1, 1]
+cumulative = sum(all_step_rewards)  # can be negative due to hard penalties
+cumulative = max(0.001, min(0.999, cumulative))  # clamped to [0.001, 0.999]
 ```
 
 ### Final Grade
 ```python
-score = max(0.0, min(1.0, cumulative_reward))
-success = score >= 0.6
+score = cumulative_reward (already clamped to [0.001, 0.999])
+success = score >= 0.6  # success threshold
 ```
 
 ---
+
+## Why Hard Penalties?
+
+The hard penalty design (`-0.30` for wrong service, `-0.10` for wrong fix type) creates a high-stakes environment that **meaningfully tests the agent's behavior:**
+
+- **Causal reasoning:** Agents that read logs/metrics first and then act correctly earn high scores. Agents that guess blindly hit hard penalties.
+- **Realism:** In real SRE, wrong actions have exponential costs (cascading failures, customer impact). Our penalties model this authentically.
+- **Stability:** Hard penalties ensure only systematic approaches achieve competitive scores, not random wandering.
+
+The clamping to `[0.001, 0.999]` ensures no single mistake is unrecoverable — agents can learn and succeed in the same episode if they adjust course after a wrong action.
 
 ## Extending the Environment
 
@@ -275,18 +387,18 @@ In `environment.py`, add to the `TASKS` dict:
 ```python
 "task_yourname": {
     "name": "Human-readable name",
-    "difficulty": "easy" | "medium" | "hard",
-    "max_steps": 10 | 15 | 20,
+    "difficulty": "medium",
+    "max_steps": 15,
     "description": "One sentence description of the fault scenario.",
     "alert": "ALERT: What the on-call engineer sees in their pager.",
     "fault_service": "service-name",        # must be in SERVICES list
-    "fault_type": "oom_crash" | "bad_deployment" | "connection_pool_exhausted",
+    "fault_type": "oom_crash" | "cpu_spike" | "connection_pool_exhausted",
     "red_herrings": [],                     # list of service names
     "ideal_steps": 4,                       # expected optimal step count
 },
 ```
 
-Then update `openenv.yaml` and `Inference.py`'s `TASKS` list.
+Then update `openenv.yaml`, `inference.py`, `models.py` and `dashboard_impl.py`'s `TASKS` lists.
 
 ### Adding a New Fault Type
 
@@ -306,7 +418,7 @@ Add to the `SERVICES` list in `environment.py` and update `openenv.yaml`'s actio
 
 Set `seed` in the `/reset` request for deterministic episodes:
 ```python
-env_reset("task_hard", seed=42)
+env_reset("task_cpu_spike", seed=42)
 ```
 
 This seeds Python's `random` module, making all `_make_metrics()` random values deterministic for that episode.
@@ -318,4 +430,4 @@ This seeds Python's `random` module, making all `_make_metrics()` random values 
 - **Single-instance server:** The FastAPI app uses a single global `IncidentResponseEnv` instance. Concurrent agents will interfere with each other.
 - **No persistent storage:** Benchmark results are not persisted across container restarts by default.
 - **Simulated, not live:** All metrics and logs are procedurally generated — not from a real Kubernetes cluster.
-- **Limited fault diversity:** Currently 3 fault types. See `SKILLS.md` for planned expansions.
+- **Limited fault diversity:** Currently 9 fault types. See `SKILLS.md` for planned expansions.
