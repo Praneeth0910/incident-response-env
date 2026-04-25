@@ -6,6 +6,7 @@ from models import Action, Observation, Reward
 # Judge integration
 from judge.llm_client import LLMClient
 from judge.llm_judge import AdversarialJudge
+from reward import EvidenceTracker, compute_step_reward, compute_rca_reward
 
 # ── Task definitions ──────────────────────────────────────────────────────────
 
@@ -572,6 +573,8 @@ class IncidentResponseEnv:
         self._llm_client: Optional[LLMClient] = None
         self._judge: Optional[AdversarialJudge] = None
         self._history: list[dict] = []
+        # Evidence tracker for Phase 4 reward functions
+        self._evidence: Optional[EvidenceTracker] = None
 
     def reset(self, task_id: str = "task_cpu_spike", seed: Optional[int] = None) -> Observation:
         if task_id not in TASKS:
@@ -593,6 +596,8 @@ class IncidentResponseEnv:
         self._rca_correct              = False
         self._wrong_interventions      = 0
         # Initialize or reset judge client and history
+        # Initialize per-episode evidence tracker used by reward.py
+        self._evidence = EvidenceTracker()
         try:
             self._llm_client = LLMClient()
             self._judge = AdversarialJudge(self._llm_client)
@@ -817,9 +822,19 @@ class IncidentResponseEnv:
                 if declared_services == fault_services:
                     self._rca_correct = True
                     rca_base      = 0.50
-                    reward_value  = round(
-                        rca_base * seq_bonus + time_bonus + evidence_bonus, 3
-                    )
+                    # Prefer central RCA reward calculation when evidence tracker available
+                    if self._evidence is not None and len(declared_services) == 1:
+                        declared = next(iter(declared_services))
+                        try:
+                            reward_value = compute_rca_reward(declared, task, self._step_count, self._evidence)
+                        except Exception:
+                            reward_value = round(
+                                rca_base * seq_bonus + time_bonus + evidence_bonus, 3
+                            )
+                    else:
+                        reward_value = round(
+                            rca_base * seq_bonus + time_bonus + evidence_bonus, 3
+                        )
                     reward_value  = min(reward_value, 0.999)
                     reward_reason = (
                         f"CORRECT RCA: {fault_svc}! "
@@ -846,6 +861,49 @@ class IncidentResponseEnv:
                         f"This is the worst outcome — overconfident wrong answer."
                     )
                     message = f"INCORRECT. The fault was in {', '.join(fault_services)}, not {action.target}.\n[END]"
+
+        # --- Centralized step reward (Phase 4): let reward.py compute step rewards
+        try:
+            # Only compute central rewards for non-redundant actions
+            if not was_redundant and action.action_type != "declare_rca":
+                action_map_reward = {
+                    "read_logs": "read_job_logs",
+                    "check_metrics": "get_cluster_metrics",
+                    "check_health": "check_runner_status",
+                    "run_db_query": "read_consumer_logs",
+                    "restart_service": "restart_consumer_group",
+                    "rollback_deployment": "rollback_workflow",
+                    "declare_rca": "declare_rca",
+                }
+                reward_action = action_map_reward.get(action.action_type, action.action_type)
+                try:
+                    # normalize history entries to reward-action names for redundancy detection
+                    actions_conv = [action_map_reward.get(k.split(':', 1)[0], k.split(':', 1)[0]) for k in self._actions_taken]
+                    computed = compute_step_reward(reward_action, task, self._step_count, actions_conv, self._evidence, observation=message)
+                    if isinstance(computed, float):
+                        reward_value = round(computed, 4)
+                        reward_reason = f"reward.py computed ({reward_action})"
+                except Exception:
+                    # if reward lib fails, leave inline reward_value as fallback
+                    pass
+
+                # Mirror evidence flags from EvidenceTracker into the env's evidence set
+                try:
+                    ev = self._evidence
+                    if ev is not None:
+                        if ev.logs_read:
+                            if action.action_type == "read_logs" and action.target == fault_svc:
+                                self._relevant_evidence_found.add("logs_fault_svc")
+                            elif action.action_type == "read_logs" and action.target == "api-gateway":
+                                self._relevant_evidence_found.add("logs_gateway")
+                        if ev.per_partition_lag_checked or ev.partition_inspected or ev.broker_logs_read:
+                            self._relevant_evidence_found.add("metrics_fault_svc")
+                        if ev.runner_status_checked or ev.action_integrity_checked or ev.audit_log_read:
+                            self._relevant_evidence_found.add("health_fault_svc")
+                except Exception:
+                    pass
+        except Exception:
+            pass
 
         # ── cascade mechanic ──────────────────────────────────────────────────
         cascade_step = task.get("cascade_step")
@@ -916,19 +974,43 @@ class IncidentResponseEnv:
                     "root_cause": task.get("description"),
                     "fault_type": task.get("fault_type"),
                     "fault_component": task.get("fault_service"),
-                    "resolution_steps": task.get("ideal_steps", []),
+                    # ideal_steps is an int in TASKS; judge expects a list for resolution_steps
+                    "resolution_steps": [str(task.get("ideal_steps", ""))],
                     "difficulty": task.get("difficulty"),
                     "max_steps": task.get("max_steps"),
+                    "red_herrings": task.get("red_herrings", []),
                 }
-                judge_score, judge_feedback = self._judge.evaluate(judge_action, message, task_context, self._history)
+                res = self._judge.evaluate(judge_action, message, task_context, self._history)
+                judge_score = None
+                judge_feedback = None
+                judge_missed = None
+                if isinstance(res, tuple):
+                    if len(res) == 3:
+                        judge_score, judge_feedback, judge_missed = res
+                    elif len(res) == 2:
+                        judge_score, judge_feedback = res
+                else:
+                    try:
+                        judge_score = float(res)
+                    except Exception:
+                        judge_score = None
+
                 info["judge_score"] = judge_score
                 info["judge_feedback"] = judge_feedback
+                info["judge_missed_signal"] = judge_missed
                 # Append to local history for future phase-aware judgements
-                self._history.append({"step": self._step_count, "action": judge_action, "reward": reward_value, "judge_score": judge_score})
+                self._history.append({
+                    "step": self._step_count,
+                    "action": judge_action,
+                    "reward": reward_value,
+                    "judge_score": judge_score,
+                    "judge_missed": judge_missed,
+                })
         except Exception:
             # Never let judge failures break the environment
             info["judge_score"] = None
             info["judge_feedback"] = None
+            info["judge_missed_signal"] = None
         return obs, rew, done, info
 
     def state(self) -> Dict[str, Any]:

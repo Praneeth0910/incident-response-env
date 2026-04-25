@@ -66,7 +66,7 @@ class LLMJudge:
     def __init__(self, llm: LLMClient):
         self.llm = llm
 
-    def evaluate(self, action: str, observation: str, task_context: dict, history: list, persona: str = "senior") -> tuple[float, str]:
+    def evaluate(self, action: str, observation: str, task_context: dict, history: list, persona: str = "senior") -> tuple[float, str, str | None]:
         domain = task_context.get("domain", "cicd")
         system = CICD_JUDGE_SYSTEM if domain == "cicd" else KAFKA_JUDGE_SYSTEM
 
@@ -81,10 +81,11 @@ class LLMJudge:
             result = self.llm.chat_json(system + "\n\n" + PERSONAS.get(persona, ""), user_prompt, temperature=0.2, max_tokens=256)
             score = max(-1.0, min(1.0, float(result.get("score", 0.0))))
             feedback = result.get("feedback", "")
-            return score, feedback
+            missed = result.get("missed_signal") if isinstance(result, dict) else None
+            return score, feedback, missed
         except Exception as e:
             logger.error(f"LLMJudge error: {e}", exc_info=True)
-            return 0.0, f"Judge error: {type(e).__name__}"
+            return 0.0, f"Judge error: {type(e).__name__}", None
 
     def score_rca(self, declared_component: str, task_context: dict, history: list) -> tuple[float, str]:
         correct = task_context.get("fault_component", "")
@@ -103,8 +104,8 @@ class LLMJudge:
 class AdversarialJudge(LLMJudge):
     _RED_HERRING_TERMS = {"unrelated","clean","no errors","green","healthy","passing","status operational","no recent changes","exit code 0"}
 
-    def evaluate(self, action: str, observation: str, task_context: dict, history: list, persona: str = "senior") -> tuple[float, str]:
-        base_score, feedback = super().evaluate(action, observation, task_context, history, persona)
+    def evaluate(self, action: str, observation: str, task_context: dict, history: list, persona: str = "senior") -> tuple[float, str, str | None]:
+        base_score, feedback, missed = super().evaluate(action, observation, task_context, history, persona)
 
         domain = task_context.get("domain", "cicd")
         current_phase = _detect_phase(action, domain)
@@ -121,7 +122,7 @@ class AdversarialJudge(LLMJudge):
                 base_score -= 0.05
 
         base_score = max(-1.0, min(1.0, base_score))
-        return base_score, feedback
+        return base_score, feedback, missed
 
     def _is_phase_order_correct(self, current_phase: str, domain: str, history: list) -> bool:
         if not history:

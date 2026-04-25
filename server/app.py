@@ -36,6 +36,7 @@ import gradio as gr
 
 from environment import IncidentResponseEnv, TASKS
 from models import Action, ResetRequest, StepResponse, TaskDetail
+from reward import EvidenceTracker, compute_step_reward, compute_rca_reward
 
 # ── FastAPI core app ──────────────────────────────────────────────────────────
 _app = FastAPI(
@@ -46,6 +47,8 @@ _app = FastAPI(
 
 # Single shared env instance (one episode at a time)
 _env: IncidentResponseEnv = IncidentResponseEnv()
+# Reward diagnostics
+_reward_info: dict = {}
 
 
 @_app.get("/", include_in_schema=False)
@@ -64,6 +67,9 @@ async def reset(body: Optional[ResetRequest] = None):
         task_id = body.task_id if body else "task_cpu_spike"
         seed = body.seed if body else None
         obs = _env.reset(task_id=task_id, seed=seed)
+        # Reset reward diagnostics
+        global _reward_info
+        _reward_info = {"task_id": task_id, "evidence_tracker": EvidenceTracker()}
         return obs.model_dump()
     except KeyError:
         raise HTTPException(status_code=400, detail=f"Unknown task_id: {task_id}")
@@ -75,6 +81,28 @@ async def reset(body: Optional[ResetRequest] = None):
 async def step(action: Action):
     try:
         obs, reward, done, info = _env.step(action)
+        # Compute additional reward diagnostics
+        try:
+            task = _env._task
+            if task and "evidence_tracker" in _reward_info:
+                ev = _reward_info["evidence_tracker"]
+                if action.action_type != "declare_rca":
+                    action_map_reward = {
+                        "read_logs": "read_job_logs",
+                        "check_metrics": "get_cluster_metrics",
+                        "check_health": "check_runner_status",
+                        "run_db_query": "read_consumer_logs",
+                        "restart_service": "restart_consumer_group",
+                        "rollback_deployment": "rollback_workflow",
+                    }
+                    reward_action = action_map_reward.get(action.action_type, action.action_type)
+                    step_reward = compute_step_reward(reward_action, task, _env._step_count,
+                                                      list(_env._actions_taken), ev, str(obs.message) if obs else "")
+                    info["centralized_reward"] = round(step_reward, 4)
+                    info["evidence_count_cicd"] = ev.evidence_count_cicd() if task.get("domain") == "cicd" else 0
+                    info["evidence_count_kafka"] = ev.evidence_count_kafka() if task.get("domain") == "kafka" else 0
+        except Exception:
+            pass  # Graceful fallback if reward computation fails
         return StepResponse(observation=obs, reward=reward, done=done, info=info).model_dump()
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -103,6 +131,34 @@ async def grade():
             "step_count": state.get("step_count", 0),
             "max_steps": state.get("max_steps"),
             "task_id": state.get("task_id"),
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@_app.get("/reward_diagnostics")
+async def reward_diagnostics():
+    """Returns reward tracking data: evidence counters, centralized reward, etc."""
+    try:
+        global _reward_info
+        ev = _reward_info.get("evidence_tracker") or EvidenceTracker()
+        return {
+            "task_id": _reward_info.get("task_id", "unknown"),
+            "evidence_count_cicd": ev.evidence_count_cicd(),
+            "evidence_count_kafka": ev.evidence_count_kafka(),
+            "evidence_flags_cicd": {
+                "logs_read": ev.logs_read,
+                "secrets_inspected": ev.secrets_inspected,
+                "audit_log_read": ev.audit_log_read,
+                "action_integrity_checked": ev.action_integrity_checked,
+            },
+            "evidence_flags_kafka": {
+                "per_partition_lag_checked": ev.per_partition_lag_checked,
+                "partition_inspected": ev.partition_inspected,
+                "broker_logs_read": ev.broker_logs_read,
+                "consumer_group_described": ev.consumer_group_described,
+                "schema_checked": ev.schema_checked,
+            },
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

@@ -783,13 +783,13 @@ def test_openenv_core_not_in_requirements():
 def test_random_seeded():
     env = REPO_ROOT / "environment.py"
     if env.exists():
-        assert "random.seed" in env.read_text(), \
+        assert "random.seed" in env.read_text(encoding='utf-8', errors='replace'), \
             "environment.py must call random.seed() for reproducibility"
 
 def test_grade_clamp():
     env = REPO_ROOT / "environment.py"
     if env.exists():
-        src = env.read_text()
+        src = env.read_text(encoding='utf-8', errors='replace')
         assert "0.001" in src and "0.999" in src, \
             "Grade must be clamped to (0.001, 0.999)"
 
@@ -797,8 +797,8 @@ def test_all_task_ids_in_models():
     env = REPO_ROOT / "environment.py"
     models = REPO_ROOT / "models.py"
     if env.exists() and models.exists():
-        env_src = env.read_text()
-        models_src = models.read_text()
+        env_src = env.read_text(encoding='utf-8', errors='replace')
+        models_src = models.read_text(encoding='utf-8', errors='replace')
         task_keys = list(set(re.findall(r'"(task_[a-z_]+)"', env_src)))
         missing = [t for t in task_keys if t not in models_src]
         assert not missing, \

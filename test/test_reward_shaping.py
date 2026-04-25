@@ -77,8 +77,8 @@ else:
 # Verify rollback_fixes no longer includes invalid types
 print("6. Verify rollback_deployment fixes list:")
 print("   Expected: ('bad_deployment', 'canary_misconfiguration') only")
-# Read the environment.py file to check
-with open('environment.py', 'r') as f:
+# Read the environment.py file to check (open with utf-8 to avoid encoding issues)
+with open('environment.py', 'r', encoding='utf-8', errors='replace') as f:
     content = f.read()
     if '_rollback_fixes = ("bad_deployment", "canary_misconfiguration")' in content:
         print("   OK - rollback_fixes correctly updated\n")
