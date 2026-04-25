@@ -18,6 +18,8 @@ short_description: LLM agents act as on-call SREs.
 [![HuggingFace](https://img.shields.io/badge/🤗-Live%20Demo-yellow?style=for-the-badge)](https://huggingface.co/spaces/ZenkuIshigami09/incident-response-env)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue?style=for-the-badge)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED?style=for-the-badge&logo=docker)](Dockerfile)
+[![Blog](https://img.shields.io/badge/Blog-Read%20Now-purple?style=for-the-badge&logo=markdown)](docs/blog.md)
+
 
 **An OpenEnv-compliant reinforcement learning benchmark where LLM agents must diagnose cascading microservices failures — just like a real Site Reliability Engineer would.**
 
