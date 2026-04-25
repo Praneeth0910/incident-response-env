@@ -893,12 +893,21 @@ class IncidentResponseEnv:
             # Only compute central rewards for non-redundant actions
             if not was_redundant and action.action_type != "declare_rca":
                 print(f"[DEBUG] Triggering compute_step_reward for {action.action_type}")
-                action_map_reward = {
+                # Domain-specific action mappings for reward computation
+                cicd_reward_map = {
                     "read_logs": "read_job_logs",
-                    "check_metrics": "get_cluster_metrics",
+                    "check_metrics": "check_runner_status",
                     "check_health": "check_runner_status",
                     "declare_rca": "declare_rca",
                 }
+                kafka_reward_map = {
+                    "read_logs": "read_consumer_logs",
+                    "check_metrics": "get_cluster_metrics",
+                    "check_health": "check_isr_status",
+                    "declare_rca": "declare_rca",
+                }
+                task_domain = task.get("domain", "cicd")
+                action_map_reward = cicd_reward_map if task_domain == "cicd" else kafka_reward_map
                 reward_action = action_map_reward.get(action.action_type, action.action_type)
                 try:
                     # normalize history entries to reward-action names for redundancy detection
@@ -965,18 +974,32 @@ class IncidentResponseEnv:
         # Run the LLM judge (best-effort). Map local action types to judge action names.
         try:
             if self._judge is not None:
-                action_map = {
+                # Domain-specific action mappings: environment actions → judge-expected actions
+                cicd_action_map = {
                     "read_logs": "read_job_logs",
-                    "check_metrics": "get_cluster_metrics",
+                    "check_metrics": "check_runner_status",
                     "check_health": "check_runner_status",
-                    "run_db_query": "read_consumer_logs",
+                    "run_db_query": "read_audit_log",
                     "restart_service": "restart_service",
                     "rollback_deployment": "rollback_workflow",
                     "declare_rca": "declare_rca",
                 }
+                kafka_action_map = {
+                    "read_logs": "read_consumer_logs",
+                    "check_metrics": "get_cluster_metrics",
+                    "check_health": "check_isr_status",
+                    "run_db_query": "describe_consumer_group",
+                    "restart_service": "restart_consumer_group",
+                    "rollback_deployment": "skip_offset",
+                    "declare_rca": "declare_rca",
+                }
+                
+                task_domain = task.get("domain", "cicd")
+                action_map = cicd_action_map if task_domain == "cicd" else kafka_action_map
                 judge_action = action_map.get(action.action_type, action.action_type)
+                
                 task_context = {
-                    "domain": "cicd",
+                    "domain": task_domain,
                     "alert_message": task.get("alert"),
                     "root_cause": task.get("description"),
                     "fault_type": task.get("fault_type"),
