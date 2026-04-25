@@ -1,15 +1,15 @@
 {
   "total_episodes": 16,
   "successful_rcas": 15,
-  "avg_score": 0.8848625,
-  "avg_reward": 0.85390625,
+  "avg_score": 0.8993125,
+  "avg_reward": 1.054625,
   "by_domain": {
     "cicd": {
       "count": 16,
-      "avg_score": 0.8848625,
+      "avg_score": 0.8993125,
       "successful_rcas": 15
     }
   },
-  "generated_at": "2026-04-25T17:05:18.498764",
+  "generated_at": "2026-04-25T19:15:42.570568",
   "trajectories_file": "sft_data\\trajectories.jsonl"
 }
