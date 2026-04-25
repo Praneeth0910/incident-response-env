@@ -1,15 +1,6 @@
 #!/usr/bin/env python3
 """Test reward shaping for new fault types."""
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
-
 from environment import IncidentResponseEnv, Action, TASKS
 
 print("=== Testing Reward Shaping for New Fault Types ===\n")
@@ -83,24 +74,24 @@ if obs.metrics and 'auth-service' in obs.metrics:
 else:
     print(f"   !! - metrics not populated\n")
 
-# Verify rollback_fixes matches current task semantics
+# Verify rollback_fixes no longer includes invalid types
 print("6. Verify rollback_deployment fixes list:")
-print("   Expected: deployment/configuration faults are rollback-remediable")
-# Read the reward module where action semantics live
-with open('reward.py', 'r', encoding='utf-8') as f:
+print("   Expected: ('bad_deployment', 'canary_misconfiguration') only")
+# Read the environment.py file to check
+with open('environment.py', 'r') as f:
     content = f.read()
-    import re
-    match = re.search(r'_rollback_fixes = \((.*?)\)', content, re.DOTALL)
-    if match:
-        fixes = match.group(1)
-        required = ["bad_deployment", "canary_misconfiguration", "cert_expired"]
-        missing = [fix for fix in required if fix not in fixes]
-        if missing:
-            print(f"   !! - rollback_fixes missing expected types: {missing}\n")
-        elif "connection_pool_exhausted" in fixes or "disk_full" in fixes:
-            print("   !! - rollback_fixes contains non-rollback infrastructure faults\n")
-        else:
-            print("   OK - rollback_fixes matches current task semantics\n")
+    if '_rollback_fixes = ("bad_deployment", "canary_misconfiguration")' in content:
+        print("   OK - rollback_fixes correctly updated\n")
+    elif '_rollback_fixes = ("bad_deployment", "canary_misconfiguration",' in content:
+        # Check if it's a multiline definition
+        import re
+        match = re.search(r'_rollback_fixes = \((.*?)\)', content, re.DOTALL)
+        if match:
+            fixes = match.group(1)
+            if 'clock_skew' in fixes or 'connection_pool_exhausted' in fixes or 'disk_full' in fixes:
+                print(f"   !! - rollback_fixes still contains invalid types\n")
+            else:
+                print(f"   OK - rollback_fixes correctly updated\n")
     else:
         print("   !! - Unable to find rollback_fixes definition\n")
 

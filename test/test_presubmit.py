@@ -224,7 +224,7 @@ def phase1_reset_endpoint() -> None:
 def phase2_inference_static() -> None:
     section("PHASE 2 — inference.py Static Analysis")
 
-    src = (REPO_ROOT / "inference.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "inference.py").read_text()
 
     # Must use OpenAI client
     check(
@@ -322,7 +322,7 @@ def phase2_inference_output_format() -> None:
     # We simulate what the evaluator sees by capturing a short run
     # We use a mock server that returns minimal valid responses
     # If server is running, we do a real short run; otherwise we parse source
-    src = (REPO_ROOT / "inference.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "inference.py").read_text()
 
     # Parse [START] format from source
     start_patterns = re.findall(r'print\s*\(\s*f?["\'].*\[START\].*["\']', src)
@@ -608,18 +608,11 @@ def bonus_environment_quality() -> None:
     section("BONUS — Environment Quality Checks")
 
     env_file = REPO_ROOT / "environment.py"
-    base_env_file = REPO_ROOT / "base_env.py"
-    tasks_file = REPO_ROOT / "tasks.py"
-    reward_file = REPO_ROOT / "reward.py"
-    if not env_file.exists() or not base_env_file.exists():
+    if not env_file.exists():
         warn("environment.py not found — skipping quality checks")
         return
 
-    src = "\n".join(
-        path.read_text(encoding="utf-8")
-        for path in (env_file, base_env_file, tasks_file, reward_file)
-        if path.exists()
-    )
+    src = env_file.read_text()
 
     # Seed is applied
     check(
@@ -645,7 +638,7 @@ def bonus_environment_quality() -> None:
     # Check requirements.txt doesn't include openenv-core
     req_file = REPO_ROOT / "requirements.txt"
     if req_file.exists():
-        req_src = req_file.read_text(encoding="utf-8")
+        req_src = req_file.read_text()
         check(
             "openenv-core" not in req_src,
             "requirements.txt does NOT include openenv-core",
@@ -654,11 +647,11 @@ def bonus_environment_quality() -> None:
 
     # Check models.py has correct Literal task IDs
     models_file = REPO_ROOT / "models.py"
-    if models_file.exists() and tasks_file.exists():
-        models_src = models_file.read_text(encoding="utf-8")
-        tasks_src = tasks_file.read_text(encoding="utf-8")
-        # Find TASKS dict keys in tasks.py
-        task_keys = re.findall(r'"(task_[a-z_]+)"', tasks_src)
+    if models_file.exists() and env_file.exists():
+        models_src = models_file.read_text()
+        env_src = env_file.read_text()
+        # Find TASKS dict keys in environment.py
+        task_keys = re.findall(r'"(task_[a-z_]+)"', env_src)
         task_keys = list(set(task_keys))
         models_ok = all(tid in models_src for tid in task_keys)
         check(
@@ -746,67 +739,67 @@ def test_openenv_yaml_exists():
     assert (REPO_ROOT / "openenv.yaml").exists(), "openenv.yaml must be at repo root"
 
 def test_inference_uses_openai_client():
-    src = (REPO_ROOT / "inference.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "inference.py").read_text()
     assert "from openai import OpenAI" in src or "import openai" in src
 
 def test_api_base_url_has_default():
-    src = (REPO_ROOT / "inference.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "inference.py").read_text()
     assert re.search(
         r'API_BASE_URL\s*=\s*os\.(?:environ\.get|getenv)\s*\(\s*["\']API_BASE_URL["\'].*,',
         src
     ), "API_BASE_URL must have a default value"
 
 def test_model_name_has_default():
-    src = (REPO_ROOT / "inference.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "inference.py").read_text()
     assert re.search(
         r'MODEL_NAME\s*=\s*os\.(?:environ\.get|getenv)\s*\(\s*["\']MODEL_NAME["\'].*,',
         src
     ), "MODEL_NAME must have a default value"
 
 def test_hf_token_present():
-    src = (REPO_ROOT / "inference.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "inference.py").read_text()
     assert "HF_TOKEN" in src, "HF_TOKEN must be referenced in inference.py"
 
 def test_no_hardcoded_api_keys():
-    src = (REPO_ROOT / "inference.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "inference.py").read_text()
     assert not re.search(r'sk-[a-zA-Z0-9]{20,}', src), "Hardcoded API key found"
 
 def test_end_line_no_score_field():
-    src = (REPO_ROOT / "inference.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "inference.py").read_text()
     end_match = re.search(r'f["\'].*\[END\](.*?)["\']', src, re.DOTALL)
     if end_match:
         assert "score=" not in end_match.group(1), "[END] print has score= field (remove it)"
 
 def test_done_success_lowercased():
-    src = (REPO_ROOT / "inference.py").read_text(encoding="utf-8")
+    src = (REPO_ROOT / "inference.py").read_text()
     assert re.search(r'\.lower\(\)', src), "done/success must be lowercased to true/false"
 
 def test_openenv_core_not_in_requirements():
     req = (REPO_ROOT / "requirements.txt")
     if req.exists():
-        assert "openenv-core" not in req.read_text(encoding="utf-8"), \
+        assert "openenv-core" not in req.read_text(), \
             "requirements.txt must NOT include openenv-core"
 
 def test_random_seeded():
-    base_env = REPO_ROOT / "base_env.py"
-    if base_env.exists():
-        assert "random.seed" in base_env.read_text(encoding="utf-8"), \
-            "base_env.py must call random.seed() for reproducibility"
+    env = REPO_ROOT / "environment.py"
+    if env.exists():
+        assert "random.seed" in env.read_text(), \
+            "environment.py must call random.seed() for reproducibility"
 
 def test_grade_clamp():
-    base_env = REPO_ROOT / "base_env.py"
-    if base_env.exists():
-        src = base_env.read_text(encoding="utf-8")
+    env = REPO_ROOT / "environment.py"
+    if env.exists():
+        src = env.read_text()
         assert "0.001" in src and "0.999" in src, \
             "Grade must be clamped to (0.001, 0.999)"
 
 def test_all_task_ids_in_models():
-    tasks = REPO_ROOT / "tasks.py"
+    env = REPO_ROOT / "environment.py"
     models = REPO_ROOT / "models.py"
-    if tasks.exists() and models.exists():
-        tasks_src = tasks.read_text(encoding="utf-8")
-        models_src = models.read_text(encoding="utf-8")
-        task_keys = list(set(re.findall(r'"(task_[a-z_]+)"', tasks_src)))
+    if env.exists() and models.exists():
+        env_src = env.read_text()
+        models_src = models.read_text()
+        task_keys = list(set(re.findall(r'"(task_[a-z_]+)"', env_src)))
         missing = [t for t in task_keys if t not in models_src]
         assert not missing, \
             f"models.py Literal missing task IDs (causes 422): {missing}"

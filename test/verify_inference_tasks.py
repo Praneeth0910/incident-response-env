@@ -2,15 +2,6 @@
 """Verify TASKS list in inference.py matches environment.py."""
 
 import re
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
-
 from environment import TASKS as env_tasks
 
 # Read inference.py
