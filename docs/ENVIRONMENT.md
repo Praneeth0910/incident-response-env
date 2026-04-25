@@ -37,7 +37,7 @@ Start a new episode.
 **Request:**
 ```json
 {
-  "task_id": "task_cpu_spike",   // Choose from the 14 available tasks
+  "task_id": "task_cpu_spike",   // Choose from the 16 available tasks
   "seed": 42                     // optional int — for reproducible episodes
 }
 ```
@@ -150,7 +150,99 @@ List all available tasks.
 
 ---
 
-## Task Definitions
+## LLM Client Integration (Phase 1-5)
+
+### Supported Providers
+
+The environment's LLM client supports multiple providers with failover logic:
+
+| Provider | Models | Retry Logic | Fallback |
+|---|---|---|---|
+| **OpenAI** | GPT-4, GPT-4o, GPT-4-turbo | ✓ Exponential backoff | Anthropic |
+| **Anthropic** | Claude-3, Claude-3.5 | ✓ Exponential backoff | HuggingFace |
+| **HuggingFace Router** | Qwen, Llama, Mistral | ✓ Retry on rate limit | Groq |
+| **Groq** | Llama, Mixtral, Gemma | ✓ Fast (no rate limit) | OpenAI |
+
+### Configuration
+
+Set these environment variables to control LLM behavior:
+
+```bash
+# Required
+export API_BASE_URL="https://api.openai.com/v1"      # or other provider
+export API_KEY="sk_..."                              # API credentials
+
+# Optional
+export MODEL_NAME="gpt-4o"                           # Model identifier
+export RETRY_ATTEMPTS=5                              # Max retries
+export RETRY_BACKOFF_FACTOR=2                        # Exponential backoff multiplier
+export TIMEOUT_SECONDS=30                            # Request timeout
+```
+
+### Resilience Features
+
+- **Exponential backoff** — Retries on transient failures (429, 500-599)
+- **Provider failover** — Falls back to secondary provider on persistent failure
+- **Timeout handling** — Configurable request timeout with fallback
+- **Rate-limit aware** — Detects and respects rate-limit headers
+
+---
+
+## Enhanced Service Simulation (Phase 1-5)
+
+### Service Health Monitoring
+Each service maintains a comprehensive health state including:
+
+- **Status** — UP, DEGRADED, DOWN, CRASHED
+- **CPU & Memory** — Real-time utilization tracking
+- **Error Rate** — Per-service error percentage
+- **Latency** — p50, p99 latency percentiles
+- **Thread Pool** — Active vs. max thread counts
+- **Connection Pool** — Database connection utilization
+
+### Service Registry & Dependency Graph
+Services are registered with metadata:
+
+```
+api-gateway (victim only)
+├── auth-service (victim or culprit)
+├── order-service (victim or culprit)
+└── notification-service (victim or culprit)
+
+auth-service
+├── redis-cache (session data)
+└── postgres-db (user credentials)
+
+order-service
+├── redis-cache (order cache)
+└── postgres-db (order data)
+
+notification-service
+└── postgres-db (notification queue)
+```
+
+### Cascading Failure Simulation
+When a service fails, downstream effects propagate:
+
+1. **Service A fails** → logs show fault
+2. **Clients of A degrade** → metrics show latency spike
+3. **Clients' clients affected** → api-gateway shows worst symptoms
+4. **Timeout cascade** → Red herring: api-gateway looks like culprit
+
+---
+
+## Kafka Simulator (Phase 1-5)
+
+Event streaming tasks use embedded Kafka simulation for incident scenarios involving:
+
+- **Event lag buildup** — Consumer lag exceeding thresholds
+- **Broker rebalancing** — Replica election delays
+- **Message loss events** — Simulated Kafka rebalance storms
+- **Topic partition imbalance** — Uneven load distribution
+
+Example task: `task_kafka_broker_failure` (coming in phase 2)
+
+---
 
 ### 1. task_cpu_spike — Auth Service CPU hard loop
 | Property | Value |

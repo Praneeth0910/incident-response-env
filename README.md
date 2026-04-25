@@ -23,7 +23,9 @@ short_description: LLM agents act as on-call SREs.
 
 **An OpenEnv-compliant reinforcement learning benchmark where LLM agents must diagnose cascading microservices failures — just like a real Site Reliability Engineer would.**
 
-[🎮 Live Demo](https://huggingface.co/spaces/ZenkuIshigami09/incident-response-env) · [📖 Environment Docs](docs/ENVIRONMENT.md) · [📊 Benchmark Guide](docs/BENCHMARK.md) · [🤖 Agent Guide](docs/AGENT.md)
+✅ **Phase 1-5 Complete** — Full environment with RL training, multi-LLM support, and trajectory logging.
+
+[🎮 Live Demo](https://huggingface.co/spaces/ZenkuIshigami09/incident-response-env) · [📖 Environment Docs](docs/ENVIRONMENT.md) · [📊 Benchmark Guide](docs/BENCHMARK.md) · [🤖 Agent Guide](docs/AGENT.md) · [🏆 Reward Design](docs/REWARDS.md)
 
 </div>
 
@@ -74,6 +76,37 @@ Unlike benchmarks where the agent sees everything at once, here the agent **only
 
 ---
 
+## 🆕 Recent Enhancements (Phase 1-5)
+
+### Multi-LLM Support with Resilient Fallbacks
+- **OpenAI & Anthropic Integration** — Full support for GPT-4, GPT-4o, Claude-3 families
+- **Retry Logic** — Exponential backoff with configurable retries for API failures
+- **Fallback Mechanisms** — Graceful degradation across multiple LLM providers
+- **LiteLLM Proxy Compatible** — Works with standardized OpenAI-compatible APIs
+
+### Trajectory Logging & SFT Data Collection
+- **JSONL Trajectories** — Every episode saved as `trajectories.jsonl` for supervised fine-tuning
+- **Structured Trajectories** — Each trajectory includes:
+  - Step-by-step actions and observations
+  - Per-step rewards and judge feedback
+  - Total accumulated reward
+  - Final score and RCA correctness flag
+- **Reward Metrics** — Full visibility into reward signals for training LLMs with reward modeling
+
+### Enhanced Service Simulation
+- **Kafka Simulator** — Event streaming tasks for complex incident scenarios
+- **Improved Health Monitoring** — Status management with failure injection capabilities
+- **Service Registry** — Comprehensive dependency graph and service metadata
+- **Cascading Failures** — Multi-level fault propagation for realistic incident patterns
+
+### Dashboard & UI Improvements
+- **Interactive Task Inspector** — Visualize task metadata and difficulty levels
+- **Real-time Reward Tracking** — Monitor cumulative rewards during episodes
+- **Benchmark Leaderboard** — Track model performance across all tasks
+- **Episode State Debugging** — Inspect hidden ground truth for analysis
+
+---
+
 ## 🎮 Action Space
 
 The agent has 7 distinct action types, each with a specific diagnostic or remediation purpose:
@@ -107,12 +140,21 @@ Every action returns a rich observation:
 | Task | Difficulty | Max Steps | Description |
 |---|---|---|---|
 | `task_cpu_spike` | Easy | 10 | Auth service CPU hot loop |
+| `task_disk_full` | Easy | 12 | Disk space exhaustion on postgres |
 | `task_db_connection_leak` | Medium | 15 | Order-service connection pool exhaustion |
-| `task_canary_poison` | Hard | 20 | Canary deployment strips auth headers |
+| `task_redis_memory_eviction` | Medium | 15 | Redis memory threshold eviction cascade |
+| `task_api_rate_limit` | Medium | 12 | API gateway rate limiter misconfiguration |
+| `task_deadlock_order_service` | Medium | 15 | Database deadlock in order-service |
+| `task_ssl_cert_expired` | Hard | 18 | SSL certificate expiration cascade |
+| `task_slow_query_postgres` | Hard | 18 | Slow query blocking connection pool |
+| `task_auth_service_500` | Hard | 20 | Auth service internal server errors |
+| `task_k8s_pod_crashloop` | Hard | 20 | Kubernetes pod crash loop |
+| `task_memory_leak` | Hard | 20 | Service memory leak causing OOM |
+| `task_thread_starvation` | Hard | 20 | Thread pool starvation in microservice |
+| `task_canary_poison` | Expert | 25 | Canary deployment strips auth headers |
+| `task_clock_skew` | Expert | 25 | System clock skew across services |
 | `task_expert` | Expert | 25 | Multi-root-cause: Redis + Auth failures |
 | **`task_expert_long_horizon`** | **Expert** | **50** | **Long-horizon cascade: Latent secondary fault at step 35+** |
-
-*[See full task list in [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#task-definitions)]*
 
 ### 🚀 Long-Horizon Planning Test: `task_expert_long_horizon`
 
