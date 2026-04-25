@@ -4,19 +4,28 @@
 *.swp
 *.swo
 
+# python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+.eggs/
+*.egg
+
 # python packaging artifacts
 *.egg-info/
 dist/
 build/
-__pycache__/
-*.pyc
-.eggs/
-*.egg
 
 # environment & secrets
 .env
 .env.*
 *.local
+.venv
+.venv/
+venv/
+ENV/
+env/
 
 # test cache
 .pytest_cache/
@@ -33,3 +42,6 @@ htmlcov/
 *.tmp
 *.bak
 *~
+
+# benchmark output
+benchmark.json
