@@ -329,7 +329,7 @@ def create_dashboard(env_instance: Optional[IncidentResponseEnv] = None) -> gr.B
     def _build_episode_outputs(env, state):
         return (state, _render_status_panel(state), _render_alert(state["alert"]), _render_episode_timeline(state), _history_rows(state), _render_score_panel(state["score"], "Live Alpha Score"), _render_service_map(state), _render_footer_bar(state))
 
-    with gr.Blocks(title="Incident Response SRE Control Panel", css=CUSTOM_CSS) as demo:
+    with gr.Blocks(title="Incident Response SRE Control Panel") as demo:
         ui_state = gr.State(initial_state)
         gr.HTML(_render_header_bar())
         
