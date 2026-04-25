@@ -196,7 +196,7 @@ class ExpertAgent:
         plan.append({"action_type": "declare_rca", "target": fault_component})
         return plan
 
-    def get_next_action(self, observation: dict | str = "", history: list = None) -> Optional[Action]:
+    def get_next_action(self, observation: dict | str = "", history: Optional[list] = None) -> Optional[Action]:
         """
         Get next action from the plan.
         Skips if action was already taken.

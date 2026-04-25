@@ -23,7 +23,9 @@ short_description: LLM agents act as on-call SREs.
 
 **An OpenEnv-compliant reinforcement learning benchmark where LLM agents must diagnose cascading microservices failures — just like a real Site Reliability Engineer would.**
 
-[🎮 Live Demo](https://huggingface.co/spaces/ZenkuIshigami09/incident-response-env) · [📖 Environment Docs](docs/ENVIRONMENT.md) · [📊 Benchmark Guide](docs/BENCHMARK.md) · [🤖 Agent Guide](docs/AGENT.md)
+✅ **Phase 1-5 Complete** — Full environment with RL training, multi-LLM support, and trajectory logging.
+
+[🎮 Live Demo](https://huggingface.co/spaces/ZenkuIshigami09/incident-response-env) · [📖 Environment Docs](docs/ENVIRONMENT.md) · [📊 Benchmark Guide](docs/BENCHMARK.md) · [🤖 Agent Guide](docs/AGENT.md) · [🏆 Reward Design](docs/REWARDS.md)
 
 </div>
 
@@ -74,6 +76,45 @@ Unlike benchmarks where the agent sees everything at once, here the agent **only
 
 ---
 
+## 🆕 Recent Enhancements (Phase 1-5)
+
+### Multi-LLM Support with Resilient Fallbacks
+- **OpenAI & Anthropic Integration** — Full support for GPT-4, GPT-4o, Claude-3 families
+- **Retry Logic** — Exponential backoff with configurable retries for API failures
+- **Fallback Mechanisms** — Graceful degradation across multiple LLM providers
+- **LiteLLM Proxy Compatible** — Works with standardized OpenAI-compatible APIs
+
+### Trajectory Logging & SFT Data Collection
+- **JSONL Trajectories** — Every episode saved as `trajectories.jsonl` for supervised fine-tuning
+- **Structured Trajectories** — Each trajectory includes:
+  - Step-by-step actions and observations
+  - Per-step rewards and judge feedback
+  - Total accumulated reward
+  - Final score and RCA correctness flag
+- **Reward Metrics** — Full visibility into reward signals for training LLMs with reward modeling
+
+### Enhanced Service Simulation
+- **Kafka Simulator** — Event streaming tasks for complex incident scenarios
+- **Improved Health Monitoring** — Status management with failure injection capabilities
+- **Service Registry** — Comprehensive dependency graph and service metadata
+- **Cascading Failures** — Multi-level fault propagation for realistic incident patterns
+
+### Phase 4 Domain-Aware Reward System
+- **reward.py integration** — Domain-dispatched reward functions (microservices, CI/CD, Kafka)
+- **Evidence tracking** — Domain-specific evidence counters (logs, metrics, integrity checks, lag analysis)
+- **Adaptive penalties** — Redundancy penalties that scale with episode progress (early: gentle, late: harsh)
+- **RCA scoring** — Efficiency bonus + evidence bonus for time-aware reward computation
+
+### Phase 1-2 Experimental Extensions
+- **CI/CD Simulator** — GitHub Actions/GitLab CI incident scenarios (reward dispatch ready, integration pending)
+- **Kafka Simulator** — Message streaming failure patterns (reward dispatch ready, integration pending)
+- **Expert Agent** — Rule-based agent for SFT data generation
+- **Trajectory logging** — Full episode paths saved as JSONL for supervised fine-tuning
+
+See [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#-phase-1-2-simulators--experimental-extensions) for simulator roadmap.
+
+---
+
 ## 🎮 Action Space
 
 The agent has 7 distinct action types, each with a specific diagnostic or remediation purpose:
@@ -107,12 +148,21 @@ Every action returns a rich observation:
 | Task | Difficulty | Max Steps | Description |
 |---|---|---|---|
 | `task_cpu_spike` | Easy | 10 | Auth service CPU hot loop |
+| `task_disk_full` | Easy | 12 | Disk space exhaustion on postgres |
 | `task_db_connection_leak` | Medium | 15 | Order-service connection pool exhaustion |
-| `task_canary_poison` | Hard | 20 | Canary deployment strips auth headers |
+| `task_redis_memory_eviction` | Medium | 15 | Redis memory threshold eviction cascade |
+| `task_api_rate_limit` | Medium | 12 | API gateway rate limiter misconfiguration |
+| `task_deadlock_order_service` | Medium | 15 | Database deadlock in order-service |
+| `task_ssl_cert_expired` | Hard | 18 | SSL certificate expiration cascade |
+| `task_slow_query_postgres` | Hard | 18 | Slow query blocking connection pool |
+| `task_auth_service_500` | Hard | 20 | Auth service internal server errors |
+| `task_k8s_pod_crashloop` | Hard | 20 | Kubernetes pod crash loop |
+| `task_memory_leak` | Hard | 20 | Service memory leak causing OOM |
+| `task_thread_starvation` | Hard | 20 | Thread pool starvation in microservice |
+| `task_canary_poison` | Expert | 25 | Canary deployment strips auth headers |
+| `task_clock_skew` | Expert | 25 | System clock skew across services |
 | `task_expert` | Expert | 25 | Multi-root-cause: Redis + Auth failures |
 | **`task_expert_long_horizon`** | **Expert** | **50** | **Long-horizon cascade: Latent secondary fault at step 35+** |
-
-*[See full task list in [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md#task-definitions)]*
 
 ### 🚀 Long-Horizon Planning Test: `task_expert_long_horizon`
 
@@ -387,20 +437,39 @@ curl http://localhost:7860/grade
 
 ## 🏗️ Architecture
 
+The environment is built with a **modular domain-aware architecture** supporting multiple incident types:
+
 ```
-┌─────────────────────────────────┐
-│   Gradio Web Dashboard          │
-└────────────┬────────────────────┘
-             ▼
-┌─────────────────────────────────┐
-│   FastAPI Server (port 7860)    │
-│   /reset, /step, /grade, /tasks │
-└────────────┬────────────────────┘
-             ▼
-┌─────────────────────────────────┐
-│   IncidentResponseEnv           │
-│   (State Machine + Pydantic)    │
-└─────────────────────────────────┘
+┌─────────────────────────────────────────────────────────┐
+│         User Interface (Gradio Dashboard)               │
+└────────────────────┬────────────────────────────────────┘
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│         FastAPI Server (port 7860)                      │
+│  /reset, /step, /grade, /tasks, /state, /health        │
+└────────────────────┬────────────────────────────────────┘
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│      IncidentResponseEnv (State Machine)                │
+│  Management, task dispatch, trajectory logging          │
+└────────────────────┬────────────────────────────────────┘
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  Reward System (Phase 4 — Domain-Aware)                │
+│  • Reward.py: Domain-dispatched reward functions        │
+│  • EvidenceTracker: Multi-type evidence collection      │
+│  • Support for: CI/CD, Kafka, Microservices             │
+└────────────────────┬────────────────────────────────────┘
+                     ▼
+┌─────────────────────────────────────────────────────────┐
+│  Simulators (Phase 1-2 Extensions — Experimental)      │
+│  • cicd_simulator.py: GitHub Actions/GitLab CI          │
+│  • kafka_simulator.py: Apache Kafka state machine       │
+│  • Status: Integrated into reward.py, optional in env   │
+└─────────────────────────────────────────────────────────┘
+
+Current (Phase 1-5): Microservices incidents only.
+Phase 1-2 simulators available via reward.py routing (see docs/ for roadmap).
 ```
 
 ---
@@ -409,21 +478,48 @@ curl http://localhost:7860/grade
 
 ```
 incident-response-env/
-├── environment.py          # Core RL environment — state machine, rewards
-├── models.py               # Pydantic schemas (Action, Observation, Reward)
-├── inference.py            # LLM agent baseline + OpenEnv-compliant runner
+├── environment.py          # Core RL environment (primary)
+├── models.py               # Pydantic data models
+├── reward.py               # Domain-aware reward functions
+├── task_config.py          # Task ID registry
+├── inference.py            # Benchmark inference script
+├── benchmark_runner.py     # Full benchmark orchestration
+├── app.py                  # Gradio entry point
+├── start.sh                # Docker startup script
+│
 ├── server/
-│   ├── app.py              # FastAPI application (uvicorn entry point)
-│   ├── dashboard_impl.py   # Gradio UI — interactive episode runner
+│   ├── app.py              # FastAPI application + REST endpoints
+│   ├── dashboard_impl.py   # Gradio terminal dashboard
 │   └── gradio_app.py       # Standalone Gradio launcher
+│
+├── judge/
+│   ├── llm_client.py       # LLM client (OpenAI / Anthropic / mock)
+│   └── llm_judge.py        # Adversarial phase-aware judge
+│
+├── simulators/
+│   ├── cicd_simulator.py   # CI/CD pipeline state machine
+│   └── kafka_simulator.py  # Kafka cluster state machine
+│
+├── training/
+│   ├── expert_agent.py     # Rule-based expert for SFT data generation
+│   └── generate_data.py    # SFT dataset generator
+│
+├── tasks/
+│   ├── cicd_tasks.json     # CI/CD task definitions
+│   └── kafka_tasks.json    # Kafka task definitions
+│
 ├── docs/
 │   ├── AGENT.md            # Full agent operating manual
 │   ├── ENVIRONMENT.md      # Complete environment specification
 │   ├── BENCHMARK.md        # Multi-model benchmarking guide
 │   ├── REWARDS.md          # Reward engineering deep dive
-│   └── SKILLS.md           # Agent capability taxonomy + prompt engineering
+│   ├── SKILLS.md           # Agent capability taxonomy + prompt engineering
+│   └── blog.md             # Technical blog — SRE AI innovation story
+│
+├── sft_data/               # Generated training trajectories
+├── test/                   # Integration tests
+├── tests/                  # Unit tests (pytest)
 ├── Dockerfile              # Production container
-├── start.sh                # Container startup (server + inference)
 ├── openenv.yaml            # OpenEnv specification manifest
 └── README.md               # This file
 ```

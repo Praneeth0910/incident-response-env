@@ -1,7 +1,21 @@
 # AGENT.md — AI Agent Operational Guide
-> **incident-response-env** · OpenEnv-compliant RL Benchmark · v1.0.0
+> **incident-response-env** · OpenEnv-compliant RL Benchmark · v1.0.0 (Phase 1-5 Complete)
 
 This document is the primary operating manual for any AI agent (LLM-based or otherwise) interacting with this environment. Read it fully before issuing a single action.
+
+**Current System:** Microservices incident diagnosis. Phase 1-2 CI/CD and Kafka extension simulators available experimentally. See [DESIGN.md](DESIGN.md) for roadmap.
+
+---
+
+## 📊 Trajectory Logging
+
+Every episode you complete is automatically recorded to `sft_data/trajectories.jsonl` with:
+- Your actions and observations at each step
+- Rewards received for each action
+- Judge scores and feedback
+- Final RCA score and correctness
+
+This data enables supervised fine-tuning of new models. Your best episodes will train the next generation of incident response agents.
 
 ---## Quick Sanity Check
 
@@ -185,3 +199,36 @@ Step 4: {"action_type": "declare_rca", "target": "auth-service"}
 ```
 
 Total: 4 steps. Score: 1.00. This is what optimal looks like.
+
+---
+
+## 10. Phase 1-5 Improvements
+
+### Multi-LLM Support
+This environment now supports agents running on:
+- **OpenAI models** — GPT-4, GPT-4o, GPT-4o-mini
+- **Anthropic models** — Claude-3 family
+- **Open-source models** — Qwen, Llama, Mistral (via HuggingFace router or Groq)
+- **Custom endpoints** — Any OpenAI-compatible API
+
+### Resilient API Integration
+- **Exponential backoff** — Retries transient failures (rate limits, timeouts)
+- **Multi-provider fallback** — Degrades to secondary LLM provider on primary failure
+- **LiteLLM compatibility** — Works with any standardized OpenAI-compatible proxy
+
+### Trajectory Data for SFT
+Every episode is recorded for supervised fine-tuning:
+
+```python
+# Load your past episodes
+import json
+with open("sft_data/trajectories.jsonl") as f:
+    episodes = [json.loads(line) for line in f]
+
+# Best episodes teach new models
+best = [e for e in episodes if e["final_score"] > 0.9]
+print(f"Train on {len(best)} high-quality trajectories")
+```
+
+Use this data to fine-tune base models into incident response specialists.
+

@@ -637,9 +637,11 @@ class IncidentResponseEnv:
         was_redundant = False
         print("BUG FIXED: was_redundant properly initialized and reward pipeline active")
 
+        # Compute redundancy flag once, used by both inline and centralized reward paths
+        was_redundant = action_key in self._actions_taken and action.action_type != "declare_rca"
+
         # ── REDUNDANT ACTION — escalating penalty ─────────────────────────────
-        if action_key in self._actions_taken and action.action_type != "declare_rca":
-            was_redundant = True
+        if was_redundant:
             print(f"[DEBUG] Redundant action detected: {action_key}")
             reward_value  = _compute_redundancy_penalty(self._step_count, max_steps)
             reward_reason = (
@@ -885,7 +887,7 @@ class IncidentResponseEnv:
                     # normalize history entries to reward-action names for redundancy detection
                     actions_conv = [action_map_reward.get(k.split(':', 1)[0], k.split(':', 1)[0]) for k in self._actions_taken]
                     computed = compute_step_reward(reward_action, task, self._step_count, actions_conv, self._evidence, observation=message)
-                    if isinstance(computed, float):
+                    if isinstance(computed, float) and computed != 0.0:
                         reward_value = round(computed, 4)
                         reward_reason = f"reward.py computed ({reward_action})"
                 except Exception as e:

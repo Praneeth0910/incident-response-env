@@ -1,5 +1,32 @@
 # BENCHMARK.md — Multi-LLM Benchmark Guide
 > **incident-response-env** · How to run, record, and interpret benchmark results
+> **Phase 1-5 Complete** + **Phase 4 Domain-Aware Rewards** + **Phase 1-2 Simulator Extensions (Experimental)**
+
+---
+
+## Current System Status
+
+| Component | Status | Details |
+|---|---|---|
+| **Microservices benchmarking** | ✅ Production | 16 tasks, OpenEnv-compliant, full trajectory logging |
+| **Domain-aware rewards** | ✅ Active | reward.py with CICD/Kafka routing (Phase 4) |
+| **CI/CD simulator** | ⚠️ Experimental | Available in code, reward dispatch ready |
+| **Kafka simulator** | ⚠️ Experimental | Available in code, reward dispatch ready |
+| **Expert agent** | ✅ Ready | Rule-based SFT data generation in training/ |
+
+## 🆕 Phase 1-5 Enhancements
+
+### Multi-LLM Support with Resilience
+- **OpenAI Integration** — Full support for GPT-4, GPT-4o, GPT-4-turbo with fallback logic
+- **Anthropic Integration** — Claude-3 family models with exponential backoff retry
+- **Fallback Mechanisms** — Gracefully degrade to secondary providers on timeout/rate-limit
+- **Retry Logic** — Configurable exponential backoff for transient API failures
+
+### Trajectory Logging & SFT Data
+- **Automated JSONL Export** — Every episode appended to `sft_data/trajectories.jsonl`
+- **Structured Trajectory Schema** — Includes observations, rewards, judge feedback, RCA correctness
+- **Reward Signals** — Full visibility into per-step rewards for reward modeling
+- **Benchmark Persistence** — Auto-updated `benchmark.json` with leaderboard metadata
 
 ---
 
@@ -146,6 +173,75 @@ Each run object stored in `latest_run` and `runs[]` uses this shape:
     "solve_rate": 0.071
   }
 }
+```
+
+---
+
+## 🆕 Trajectory Logging for SFT
+
+Every episode automatically generates a trajectory entry in `sft_data/trajectories.jsonl`:
+
+```json
+{
+  "task_id": "task_cpu_spike",
+  "domain": "cicd",
+  "steps": [
+    {
+      "step": 1,
+      "action": "read_logs:auth-service",
+      "reward": 0.15,
+      "observation": "Logs from auth-service:\n[ERROR] auth-service: thread saturation...",
+      "judge_score": 0.4,
+      "judge_feedback": "Good evidence-gathering step."
+    },
+    {
+      "step": 2,
+      "action": "check_metrics:auth-service",
+      "reward": 0.12,
+      "observation": "Metrics for auth-service: {'cpu_pct': 99, 'error_rate': 0.91...}",
+      "judge_score": 0.75,
+      "judge_feedback": "Good evidence-gathering step."
+    },
+    {
+      "step": 3,
+      "action": "restart_service:auth-service",
+      "reward": 0.35,
+      "observation": "auth-service restarted successfully. Error rate dropping.",
+      "judge_score": 0.75,
+      "judge_feedback": "Good evidence-gathering step."
+    },
+    {
+      "step": 4,
+      "action": "declare_rca:auth-service",
+      "reward": 0.65,
+      "observation": "Root cause confirmed: auth-service — Incident resolved.",
+      "judge_score": 0.4,
+      "judge_feedback": "Good evidence-gathering step."
+    }
+  ],
+  "total_reward": 1.27,
+  "final_score": 0.999,
+  "rca_correct": true
+}
+```
+
+### Using Trajectories for SFT
+
+Load trajectories for supervised fine-tuning:
+
+```python
+import json
+
+trajectories = []
+with open("sft_data/trajectories.jsonl") as f:
+    for line in f:
+        trajectories.append(json.loads(line))
+
+# Filter successful episodes
+successful = [t for t in trajectories if t["rca_correct"] and t["final_score"] > 0.85]
+
+# Train an SFT model on action sequences and observations
+print(f"Loaded {len(successful)} successful trajectories for training")
 ```
 
 ---
