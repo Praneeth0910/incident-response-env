@@ -21,6 +21,17 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional, Set
+from datetime import datetime
+
+# ── Service Status Definition ──────────────────────────────────────────────────
+
+
+class ServiceStatus(Enum):
+    """Service health status."""
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    DOWN = "down"
+
 
 # ── Service Tier Definition ────────────────────────────────────────────────────
 
@@ -84,6 +95,13 @@ class Service:
         recovery_actions: Actions that can fix this service
         cascade_targets: Services affected if this fails
         red_herring_targets: Services that look suspect when this fails
+        
+        # Runtime State (mutable during simulation)
+        status: Current health status (healthy/degraded/down)
+        current_metrics: Runtime metric values
+        error_logs: Logs generated during incident
+        failure_start_time: When the service started failing
+        root_cause_fault: The fault that caused this service to fail
     """
 
     name: str
@@ -97,12 +115,19 @@ class Service:
     recovery_actions: List[str] = field(default_factory=list)
     cascade_targets: List[str] = field(default_factory=list)
     red_herring_targets: List[str] = field(default_factory=list)
+    
+    # Runtime state
+    status: ServiceStatus = field(default=ServiceStatus.HEALTHY)
+    current_metrics: Dict[str, float] = field(default_factory=dict)
+    error_logs: List[str] = field(default_factory=list)
+    failure_start_time: Optional[datetime] = field(default=None)
+    root_cause_fault: Optional[str] = field(default=None)
 
     def __str__(self) -> str:
-        return f"{self.name} ({self.tier.value})"
+        return f"{self.name} ({self.tier.value}) [{self.status.value}]"
 
     def __repr__(self) -> str:
-        return f"Service(name={self.name}, tier={self.tier.value})"
+        return f"Service(name={self.name}, tier={self.tier.value}, status={self.status.value})"
 
     @property
     def is_critical(self) -> bool:
@@ -118,9 +143,282 @@ class Service:
                 # Recursively find dependents of dependents
                 dependents.update(svc.get_all_dependents_recursive(registry))
         return dependents
+    
+    def reset_state(self) -> None:
+        """Reset service to healthy state (used when recovering)."""
+        self.status = ServiceStatus.HEALTHY
+        self.current_metrics = {}
+        self.error_logs = []
+        self.failure_start_time = None
+        self.root_cause_fault = None
+
+
+# ── Service Simulator ──────────────────────────────────────────────────────────
+
+
+class ServiceSimulator:
+    """
+    Service failure simulation system.
+    
+    Orchestrates:
+    - Failure propagation through dependency graph
+    - Metric updates reflecting service degradation
+    - Cascading failures to dependent services
+    """
+    
+    def __init__(self, registry: Dict[str, Service]):
+        """
+        Initialize simulator with service registry.
+        
+        Args:
+            registry: Dict of service_name -> Service
+        """
+        self.registry = registry
+        self.failure_chain: List[str] = []  # Track failure sequence
+    
+    def propagate_failure(
+        self, 
+        root_service: str, 
+        fault_type: FaultType,
+        max_cascade_depth: int = 5
+    ) -> Dict[str, any]:
+        """
+        Propagate a service failure through the dependency graph.
+        
+        Args:
+            root_service: Service name where failure originates
+            fault_type: Type of fault (resource exhaustion, configuration, etc)
+            max_cascade_depth: Maximum cascade propagation depth
+        
+        Returns:
+            Dict with failure analysis:
+            - root_service: Service that failed
+            - fault_type: Type of fault
+            - affected_services: All services affected (transitive)
+            - critical_services_affected: Critical path services impacted
+            - cascade_chain: Order of failure propagation
+        
+        Raises:
+            KeyError: If root_service not in registry
+        """
+        if root_service not in self.registry:
+            raise KeyError(f"Service '{root_service}' not found in registry")
+        
+        root_svc = self.registry[root_service]
+        affected = set()
+        cascade_chain = [root_service]
+        
+        # Mark root service as down
+        root_svc.status = ServiceStatus.DOWN
+        root_svc.failure_start_time = datetime.now()
+        root_svc.root_cause_fault = fault_type.value
+        
+        # Cascade through dependents
+        to_visit = {root_service}
+        visited = {root_service}
+        depth = 0
+        
+        while to_visit and depth < max_cascade_depth:
+            current_level = to_visit.copy()
+            to_visit = set()
+            depth += 1
+            
+            for service_name in current_level:
+                # Get all direct dependents of this service
+                dependents = self._get_direct_dependents(service_name)
+                
+                for dependent_name in dependents:
+                    if dependent_name not in visited:
+                        visited.add(dependent_name)
+                        to_visit.add(dependent_name)
+                        affected.add(dependent_name)
+                        cascade_chain.append(dependent_name)
+                        
+                        # Mark as degraded (or down if critical dependency failed)
+                        dependent_svc = self.registry[dependent_name]
+                        if root_svc.critical_path:
+                            dependent_svc.status = ServiceStatus.DOWN
+                        else:
+                            dependent_svc.status = ServiceStatus.DEGRADED
+                        
+                        dependent_svc.failure_start_time = datetime.now()
+                        dependent_svc.root_cause_fault = root_service
+        
+        affected.discard(root_service)  # Don't include root in affected
+        
+        # Identify critical services in cascade
+        critical_affected = [
+            svc_name for svc_name in affected 
+            if self.registry[svc_name].critical_path
+        ]
+        
+        return {
+            "root_service": root_service,
+            "root_fault_type": fault_type.value,
+            "affected_services": affected,
+            "affected_count": len(affected),
+            "cascade_chain": cascade_chain,
+            "critical_services_affected": critical_affected,
+            "critical_path_broken": len(critical_affected) > 0,
+        }
+    
+    def update_metrics(
+        self, 
+        service_name: str, 
+        metric_updates: Dict[str, float]
+    ) -> Dict[str, float]:
+        """
+        Update runtime metrics for a service.
+        
+        Metrics reflect the service's current degraded state during an incident.
+        
+        Args:
+            service_name: Service to update
+            metric_updates: Dict of metric_name -> critical_value
+        
+        Returns:
+            Dict of updated metrics
+        
+        Raises:
+            KeyError: If service not found
+        
+        Example:
+            >>> sim.update_metrics("postgres-db", {
+            ...     "disk_used_pct": 100.0,
+            ...     "active_connections": 500,
+            ...     "query_latency_p99_ms": 30000
+            ... })
+        """
+        if service_name not in self.registry:
+            raise KeyError(f"Service '{service_name}' not found in registry")
+        
+        service = self.registry[service_name]
+        
+        # Update current metrics
+        service.current_metrics.update(metric_updates)
+        
+        # Determine status based on metric violations
+        metric_sigs = service.metrics
+        violations = 0
+        
+        for metric_name, critical_value in metric_updates.items():
+            if metric_name in metric_sigs:
+                threshold = metric_sigs[metric_name].critical_threshold
+                if critical_value >= threshold:
+                    violations += 1
+        
+        # Set status based on violation count
+        if violations >= len(metric_updates) * 0.5:  # 50% of metrics violated
+            service.status = ServiceStatus.DOWN
+        elif violations > 0:
+            service.status = ServiceStatus.DEGRADED
+        
+        return service.current_metrics
+    
+    def add_error_log(self, service_name: str, log_entry: str) -> None:
+        """
+        Add an error log to a service's error log buffer.
+        
+        Args:
+            service_name: Service to log error for
+            log_entry: Error log message
+        
+        Raises:
+            KeyError: If service not found
+        """
+        if service_name not in self.registry:
+            raise KeyError(f"Service '{service_name}' not found in registry")
+        
+        service = self.registry[service_name]
+        timestamp = datetime.now().isoformat()
+        service.error_logs.append(f"[{timestamp}] {log_entry}")
+    
+    def recover_service(self, service_name: str) -> None:
+        """
+        Recover a service to healthy state.
+        
+        Args:
+            service_name: Service to recover
+        
+        Raises:
+            KeyError: If service not found
+        """
+        if service_name not in self.registry:
+            raise KeyError(f"Service '{service_name}' not found in registry")
+        
+        self.registry[service_name].reset_state()
+    
+    def get_cascade_impact(self, root_service: str) -> Dict[str, any]:
+        """
+        Analyze what services would be affected if root_service fails.
+        
+        Args:
+            root_service: Service to analyze
+        
+        Returns:
+            Dict with cascade analysis:
+            - direct_dependents: Services that directly depend on root
+            - all_affected: All transitive dependents
+            - critical_path_impact: Whether critical services affected
+            - impact_severity: Number of services affected
+        
+        Raises:
+            KeyError: If service not found
+        """
+        if root_service not in self.registry:
+            raise KeyError(f"Service '{root_service}' not found in registry")
+        
+        direct = self._get_direct_dependents(root_service)
+        all_affected = self._get_all_dependents_recursive(root_service)
+        
+        critical_affected = [
+            svc for svc in all_affected 
+            if self.registry[svc].critical_path
+        ]
+        
+        return {
+            "root_service": root_service,
+            "direct_dependents": direct,
+            "all_affected": all_affected,
+            "affected_count": len(all_affected),
+            "critical_services_affected": critical_affected,
+            "critical_count": len(critical_affected),
+            "impact_severity": "critical" if len(critical_affected) > 0 else "moderate" if len(all_affected) > 3 else "low",
+        }
+    
+    def _get_direct_dependents(self, service_name: str) -> Set[str]:
+        """Get services that directly depend on this service."""
+        dependents = set()
+        for svc_name, svc in self.registry.items():
+            if service_name in svc.dependencies:
+                dependents.add(svc_name)
+        return dependents
+    
+    def _get_all_dependents_recursive(self, service_name: str) -> Set[str]:
+        """Get all transitive dependents."""
+        visited = set()
+        to_visit = {service_name}
+        
+        while to_visit:
+            current = to_visit.pop()
+            if current in visited:
+                continue
+            visited.add(current)
+            
+            dependents = self._get_direct_dependents(current)
+            to_visit.update(dependents - visited)
+        
+        visited.discard(service_name)
+        return visited
+    
+    def reset_all_services(self) -> None:
+        """Reset all services to healthy state."""
+        for service in self.registry.values():
+            service.reset_state()
 
 
 # ── Service Registry ──────────────────────────────────────────────────────────
+
 
 SERVICE_REGISTRY: Dict[str, Service] = {
     # ── Foundational Services ──────────────────────────────────────────────
