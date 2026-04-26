@@ -25,7 +25,8 @@ if str(_root) not in sys.path:
 
 from environment import IncidentResponseEnv, TASKS, SERVICES
 from models import Action
-from training.expert_agent import ExpertAgent
+import json
+import re
 
 __all__ = ["create_dashboard", "CUSTOM_CSS", "UI_THEME"]
 
@@ -299,54 +300,146 @@ def _history_rows(state: Dict[str, Any]) -> List[List[Any]]:
 def _benchmark_rows(store: Dict[str, Any]) -> List[List[Any]]:
     return [[idx+1, i["model"], i["average_score"], f"{i['tasks_solved']}/{i['tasks_total']}", i["timestamp"]] for idx, i in enumerate(store.get("leaderboard", []))]
 
+def _load_model(model_name: str):
+    """Load model and tokenizer from HuggingFace."""
+    try:
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name, 
+            trust_remote_code=True,
+            device_map="auto",
+            torch_dtype="auto"
+        )
+        return model, tokenizer
+    except Exception as e:
+        return None, None
+
+def _parse_action(text: str) -> Optional[Dict[str, str]]:
+    """Extract JSON action from LLM response."""
+    try:
+        # Try to find JSON object in response
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            action_dict = json.loads(text[start:end])
+            if "action_type" in action_dict and "target" in action_dict:
+                return action_dict
+        return None
+    except:
+        return None
+
+def _generate_action(model, tokenizer, obs, task_alert: str, step: int):
+    """Generate action using LLM inference."""
+    prompt = f"""You are an expert Site Reliability Engineer responding to a production incident.
+
+INCIDENT ALERT:
+{task_alert}
+
+CURRENT OBSERVATION (Step {step}):
+{obs.message}
+
+Available actions:
+- {{"action_type": "read_logs", "target": "<service>"}}
+- {{"action_type": "check_metrics", "target": "<service>"}}
+- {{"action_type": "check_health", "target": "<service>"}}
+- {{"action_type": "run_db_query", "target": "postgres-db"}}
+- {{"action_type": "restart_service", "target": "<service>"}}
+- {{"action_type": "rollback_deployment", "target": "<service>"}}
+- {{"action_type": "declare_rca", "target": "<service>"}}
+
+Available services: api-gateway, auth-service, order-service, notification-service, redis-cache, postgres-db
+
+Respond with ONLY a JSON action (no explanation):"""
+
+    try:
+        inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+        outputs = model.generate(
+            **inputs,
+            max_new_tokens=100,
+            temperature=0.7,
+            do_sample=True,
+            pad_token_id=tokenizer.eos_token_id
+        )
+        response = tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        # Extract just the generated part (after prompt)
+        generated = response[len(prompt):].strip()
+        return _parse_action(generated)
+    except Exception as e:
+        return None
+
 def run_custom_model_benchmark(model_name: str) -> Tuple[Dict[str, Any], List[List[Any]]]:
-    """Run benchmark using expert agent and compare with stored results."""
+    """Run REAL model benchmark using actual LLM inference."""
     if not model_name or not model_name.strip():
         return {"error": "Model name required"}, []
     
     model_name = model_name.strip()
-    env = IncidentResponseEnv()
     
-    # Run expert agent on all tasks
+    # Try to load the model
+    model, tokenizer = _load_model(model_name)
+    
+    if model is None or tokenizer is None:
+        return {"error": f"Failed to load model '{model_name}'. Check model name or use HuggingFace format."}, []
+    
+    env = IncidentResponseEnv()
+    MAX_STEPS = 25
+    
     scores = []
     steps_list = []
     task_results = {}
     
-    for task_id, task in TASKS.items():
-        try:
-            obs = env.reset(task_id=task_id)
-            expert = ExpertAgent(task)
-            
-            # Get expert plan
-            domain = task.get("domain", "cicd")
-            if domain == "cicd":
-                plan = expert._cicd_plan(task.get("fault_type"))
-            elif domain == "kafka":
-                plan = expert._kafka_plan(task.get("fault_type"))
-            else:
-                continue
-            
-            # Execute plan
-            total_reward = 0.0
-            for action_dict in plan:
-                action = Action(**action_dict)
-                obs, reward, done, info = env.step(action)
-                total_reward += reward.value
-                if done:
-                    break
-            
-            grade = env.grade()
-            scores.append(grade)
-            steps_list.append(env._step_count)
-            task_results[task_id] = {
-                "score": grade,
-                "steps": env._step_count,
-                "success": grade >= 0.70
-            }
-        except Exception as e:
-            task_results[task_id] = {"error": str(e)}
+    try:
+        for task_id, task in TASKS.items():
+            try:
+                obs = env.reset(task_id=task_id)
+                task_alert = obs.alert
+                total_reward = 0.0
+                
+                for step in range(MAX_STEPS):
+                    # Generate action using model
+                    action_dict = _generate_action(model, tokenizer, obs, task_alert, step + 1)
+                    
+                    if action_dict is None:
+                        # Model failed to generate valid action - penalize and break
+                        break
+                    
+                    # Execute action
+                    try:
+                        action = Action(**action_dict)
+                        obs, reward, done, info = env.step(action)
+                        total_reward += reward.value
+                        
+                        if done:
+                            break
+                    except Exception as e:
+                        # Invalid action format
+                        break
+                
+                grade = env.grade()
+                scores.append(grade)
+                steps_list.append(env._step_count)
+                task_results[task_id] = {
+                    "score": grade,
+                    "steps": env._step_count,
+                    "success": grade >= 0.70
+                }
+            except Exception as e:
+                task_results[task_id] = {"error": str(e), "score": 0.0, "success": False}
+                scores.append(0.0)
+                steps_list.append(0)
     
-    # Calculate metrics
+    finally:
+        # Clean up model from memory
+        import gc
+        import torch
+        del model
+        del tokenizer
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    
+    # Calculate real metrics (NO fake data)
     avg_score = round(sum(scores) / len(scores), 4) if scores else 0.0
     avg_steps = round(sum(steps_list) / len(steps_list), 1) if steps_list else 0
     tasks_solved = sum(1 for s in scores if s >= 0.70)
@@ -358,7 +451,8 @@ def run_custom_model_benchmark(model_name: str) -> Tuple[Dict[str, Any], List[Li
         "tasks_solved": tasks_solved,
         "tasks_total": tasks_total,
         "avg_steps": avg_steps,
-        "task_results": task_results
+        "task_results": task_results,
+        "evaluation_type": "REAL_INFERENCE"
     }
     
     # Load existing benchmarks and create comparison
@@ -587,5 +681,5 @@ Expand scenario library with edge cases, multi-fault incidents, and time-sensiti
         )
 
     print("[OK] About Us page successfully added to UI")
-    print("[OK] Custom model benchmarking feature added successfully")
+    print("[OK] Real model benchmarking implemented (no fake data)")
     return demo
