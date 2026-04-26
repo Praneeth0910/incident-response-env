@@ -655,14 +655,12 @@ class IncidentResponseEnv:
 
         action_key = f"{action.action_type}:{action.target}"
         was_redundant = False
-        print("BUG FIXED: was_redundant properly initialized and reward pipeline active")
 
         # Compute redundancy flag once, used by both inline and centralized reward paths
         was_redundant = action_key in self._actions_taken and action.action_type != "declare_rca"
 
         # ── REDUNDANT ACTION — escalating penalty ─────────────────────────────
         if was_redundant:
-            print(f"[DEBUG] Redundant action detected: {action_key}")
             reward_value  = _compute_redundancy_penalty(self._step_count, max_steps)
             reward_reason = (
                 f"redundant action — already checked {action.target} with "
@@ -921,7 +919,6 @@ class IncidentResponseEnv:
         try:
             # Only compute central rewards for non-redundant actions
             if not was_redundant and action.action_type != "declare_rca":
-                print(f"[DEBUG] Triggering compute_step_reward for {action.action_type}")
                 # Domain-specific action mappings for reward computation
                 cicd_reward_map = {
                     "read_logs": "read_job_logs",

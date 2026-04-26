@@ -208,7 +208,6 @@ class ExpertAgent:
             debug_msg = f"Single-fault scenario: investigating {svc} ({fault})"
         
         plan.append({"action_type": "declare_rca", "target": fault_components})
-        print(f"[EXPERT AGENT] {debug_msg}. Final RCA target: {fault_components}")
         return plan
 
     def _kafka_plan(self, fault: str) -> list[dict]:
@@ -359,8 +358,5 @@ def run_expert_on_all_tasks(env, tasks: Dict[str, dict]) -> List[EpisodeTrajecto
             print(f"{task_id}: score={traj.final_score:.3f} reward={traj.total_reward:.3f} rca={traj.rca_correct}")
         except Exception as e:
             print(f"{task_id}: FAILED - {e}")
-            
-    unique_ids = list(set([t.task_id for t in trajectories]))
-    print(f"BUG FIXED: All tasks executed. Unique task_ids = {unique_ids}")
     
     return trajectories
