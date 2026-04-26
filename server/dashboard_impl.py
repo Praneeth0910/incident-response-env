@@ -309,29 +309,64 @@ def _check_dependencies():
     except ImportError as e:
         return False, f"Missing dependency: {str(e)}. Install with: pip install transformers torch"
 
+def _check_internet():
+    """Check internet connectivity to HuggingFace."""
+    try:
+        import requests
+        requests.get("https://huggingface.co", timeout=3)
+        return True, None
+    except Exception as e:
+        return False, f"No internet connection. Cannot download model. ({str(e)})"
+
+def _check_model_accessibility(model_name: str):
+    """Test if model is accessible before full load."""
+    try:
+        from transformers import AutoConfig
+        print(f"[PRE-CHECK] Testing accessibility for: {model_name}")
+        AutoConfig.from_pretrained(model_name)
+        print(f"[PRE-CHECK] Model accessible")
+        return True, None
+    except Exception as e:
+        error_str = str(e)
+        # Check for authentication errors
+        if "401" in error_str or "403" in error_str or "unauthorized" in error_str.lower():
+            return False, f"Model '{model_name}' requires HuggingFace login or token.\n\nTo access gated models:\n1. Create account at https://huggingface.co\n2. Request access to the model\n3. Set HF_TOKEN environment variable\n\nSuggestion: Try 'sshleifer/tiny-gpt2' (no auth required)"
+        return False, str(e)
+
 def _load_model(model_name: str):
-    """Load model and tokenizer from HuggingFace with detailed error reporting."""
-    print(f"[MODEL LOAD] Attempting to load: {model_name}")
+    """Load model and tokenizer from HuggingFace with full error reporting."""
+    print(f"[LOAD] Attempting to load: {model_name}")
     try:
         from transformers import AutoModelForCausalLM, AutoTokenizer
         import torch
+        import os
         
-        print(f"[MODEL LOAD] Loading tokenizer...")
-        tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
-        
-        print(f"[MODEL LOAD] Loading model (this may take a while)...")
-        model = AutoModelForCausalLM.from_pretrained(
-            model_name, 
-            trust_remote_code=True,
-            device_map="auto",
-            torch_dtype="auto"
+        print(f"[LOAD] Loading tokenizer...")
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_name,
+            trust_remote_code=True
         )
-        print(f"[MODEL LOAD] Successfully loaded {model_name}")
+        
+        print(f"[LOAD] Loading model (CPU-safe mode)...")
+        # CPU-safe loading - works on any machine
+        model = AutoModelForCausalLM.from_pretrained(
+            model_name,
+            trust_remote_code=True,
+            device_map="cpu",
+            torch_dtype=torch.float32,
+            low_cpu_mem_usage=True
+        )
+        print(f"[LOAD SUCCESS] Model loaded: {model_name}")
         return model, tokenizer, None
+        
     except Exception as e:
-        error_msg = f"Model loading failed: {str(e)}"
-        print(f"[MODEL LOAD ERROR] {error_msg}")
-        return None, None, error_msg
+        import traceback
+        error_trace = traceback.format_exc()
+        print("[LOAD ERROR] Full traceback:")
+        print(error_trace)
+        
+        # Return full traceback for debugging
+        return None, None, error_trace
 
 def _parse_action(text: str) -> Optional[Dict[str, str]]:
     """Extract JSON action from LLM response with safe parsing."""
@@ -409,17 +444,28 @@ def run_custom_model_benchmark(model_name: str) -> Tuple[Dict[str, Any], List[Li
     
     model_name = model_name.strip()
     
-    # Check dependencies first
+    # Step 1: Check dependencies
     deps_ok, deps_error = _check_dependencies()
     if not deps_ok:
         return {"error": deps_error}, []
     
-    # Try to load the model
+    # Step 2: Check internet connectivity
+    internet_ok, internet_error = _check_internet()
+    if not internet_ok:
+        return {"error": internet_error + "\n\nSuggestion: Check your internet connection or use a cached model."}, []
+    
+    # Step 3: Test model accessibility (quick pre-check)
+    accessible_ok, accessible_error = _check_model_accessibility(model_name)
+    if not accessible_ok:
+        return {"error": f"Model accessibility check failed:\n\n{accessible_error}"}, []
+    
+    # Step 4: Load the model
     model, tokenizer, load_error = _load_model(model_name)
     
     if model is None or tokenizer is None:
-        # Provide detailed error message
-        error_msg = load_error or f"Failed to load model '{model_name}'"
+        # Return FULL error trace (no generic message)
+        error_msg = f"Model loading failed:\n\n{load_error}\n\n"
+        error_msg += "Suggestion: Try 'sshleifer/tiny-gpt2' (lightweight test model)"
         return {"error": error_msg}, []
     
     env = IncidentResponseEnv()
@@ -734,5 +780,5 @@ Expand scenario library with edge cases, multi-fault incidents, and time-sensiti
         )
 
     print("[OK] About Us page successfully added to UI")
-    print("✅ Backend fixed: real model loading + real benchmarking enabled")
+    print("✅ Model loading system fixed with real error visibility")
     return demo
