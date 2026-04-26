@@ -102,7 +102,12 @@ Tasks contain **deliberately misleading signals**:
 8. declare_rca → <confirmed faulty service>
 ```
 
-Ideal episode = **3–8 steps**. Max steps = 15 for all tasks.
+Ideal episode = **3–8 steps**. Max steps varies by difficulty:
+- **Easy tasks** (task_cpu_spike, task_disk_full): 10 steps
+- **Medium tasks** (most tasks): 15 steps
+- **Hard tasks** (task_canary_poison, task_clock_skew): 20 steps
+- **Multi-fault** (task_expert): 25 steps
+- **Long-horizon** (task_expert_long_horizon): 50 steps
 
 ---
 

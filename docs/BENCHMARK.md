@@ -59,7 +59,9 @@ HF_TOKEN=hf_...
 Available models:
 - `Qwen/Qwen2.5-72B-Instruct` (default baseline)
 - `meta-llama/Llama-3.3-70B-Instruct`
+- `meta-llama/Llama-3.1-70B-Instruct`
 - `mistralai/Mistral-7B-Instruct-v0.3`
+- `mistralai/Mixtral-8x7B-Instruct-v0.1`
 - `google/gemma-2-27b-it`
 - `microsoft/Phi-3.5-mini-instruct`
 
@@ -70,14 +72,50 @@ HF_TOKEN=gsk_...  # Groq API key
 ```
 Available models:
 - `llama-3.3-70b-versatile`
+- `llama-3.1-70b-versatile`
 - `mixtral-8x7b-32768`
 - `gemma2-9b-it`
 
 ### OpenAI
 ```bash
 API_BASE_URL=https://api.openai.com/v1
-HF_TOKEN=sk_...
+HF_TOKEN=sk_...  # or API_KEY
 ```
+Available models:
+- `gpt-4o` (recommended)
+- `gpt-4-turbo`
+- `gpt-4`
+- `gpt-3.5-turbo`
+
+### Anthropic
+```bash
+API_BASE_URL=https://api.anthropic.com/v1
+API_KEY=sk-ant-...
+```
+Available models:
+- `claude-3-5-sonnet-20241022`
+- `claude-3-opus-20240229`
+- `claude-3-sonnet-20240229`
+
+### Together AI
+```bash
+API_BASE_URL=https://api.together.xyz/v1
+API_KEY=...
+```
+Available models:
+- `meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo`
+- `mistralai/Mixtral-8x7B-Instruct-v0.1`
+- `Qwen/Qwen2.5-72B-Instruct-Turbo`
+
+### Ollama (Local)
+```bash
+API_BASE_URL=http://localhost:11434/v1
+API_KEY=ollama  # Any value works
+```
+Available models:
+- `llama3.1:70b`
+- `mistral:latest`
+- `qwen2.5:72b`
 Available models:
 - `gpt-4o`
 - `gpt-4o-mini`

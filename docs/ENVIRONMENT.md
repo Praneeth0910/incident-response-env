@@ -145,10 +145,34 @@ List all available tasks.
     "name": "Auth service CPU hard loop",
     "difficulty": "easy",
     "max_steps": 10,
-    "description": "A hot loop in JWT validation is pegging auth-service CPU at 99%."
-  }
+    "description": "A hot loop in JWT validation is pegging auth-service CPU at 99%.",
+    "ideal_steps": 5,
+    "fault_service": "auth-service",
+    "fault_type": "cpu_spike",
+    "red_herrings": [],
+    "cascade_step": null
+  },
+  ...
 }
 ```
+
+**All 16 tasks:**
+1. `task_cpu_spike` — Easy (10 steps) — Auth CPU hot loop
+2. `task_disk_full` — Easy (10 steps) — Postgres WAL overflow
+3. `task_db_connection_leak` — Medium (15 steps) — Connection pool exhausted + cascade
+4. `task_redis_memory_eviction` — Medium (15 steps) — Cache eviction cascade
+5. `task_api_rate_limit` — Medium (15 steps) — Rate limiter misconfiguration
+6. `task_deadlock_order_service` — Medium (15 steps) — Database deadlock
+7. `task_ssl_cert_expired` — Medium (15 steps) — TLS certificate expiration
+8. `task_slow_query_postgres` — Medium (15 steps) — Missing database index
+9. `task_auth_service_500` — Medium (15 steps) — Internal server errors
+10. `task_k8s_pod_crashloop` — Medium (15 steps) — Pod crash loop
+11. `task_memory_leak` — Medium (15 steps) — Memory exhaustion + GC pauses
+12. `task_thread_starvation` — Medium (15 steps) — Thread pool exhaustion
+13. `task_canary_poison` — Hard (20 steps) — Canary deployment stripping headers + 2 red herrings
+14. `task_clock_skew` — Hard (20 steps) — NTP drift causing token rejections + 2 red herrings
+15. `task_expert` — Hard (25 steps) — **Multi-fault: Redis + Auth** + 2 red herrings
+16. `task_expert_long_horizon` — Hard (50 steps) — **Long-horizon with latent secondary fault at step 35+**
 
 ---
 

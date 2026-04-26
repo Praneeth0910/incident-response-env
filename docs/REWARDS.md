@@ -135,7 +135,7 @@ declare_rca        →     compute_rca_reward()   →  compute_rca_reward()     
 
 **How it works:** `environment.py` calls `reward.py:compute_step_reward()`, which dispatches to domain-specific logic based on `task.domain` and `fault_type`.
 
-Currently, only microservices domain is active. CI/CD and Kafka support is implemented in reward.py but requires simulator integration (work in progress).
+**Current status:** Only microservices domain is active in production. CI/CD and Kafka reward functions are fully implemented in `reward.py` with evidence tracking and domain-specific actions, but require simulator integration from `simulators/cicd_simulator.py` and `simulators/kafka_simulator.py` (experimental - work in progress).
 
 ---
 
