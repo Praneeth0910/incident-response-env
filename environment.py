@@ -310,9 +310,13 @@ def _make_metrics(service: str, task: dict,
                          "cpu_pct": 12, "memory_pct": 44,
                          "active_connections": 500, "max_connections": 500})
         elif fault_type == "cpu_spike":
-            base.update({"latency_p99_ms": 9200, "error_rate": 0.91,
-                         "cpu_pct": 99, "memory_pct": 42, "request_rate": 12,
-                         "thread_pool_active": 200, "thread_pool_max": 200})
+            latency = random.randint(2000, 10000)
+            error_rate = round(random.uniform(0.1, 0.95), 2)
+            cpu = random.randint(85, 100)
+            thread = random.randint(150, 250)
+            base.update({"latency_p99_ms": latency, "error_rate": error_rate,
+                         "cpu_pct": cpu, "memory_pct": 42, "request_rate": random.randint(10, 50),
+                         "thread_pool_active": thread, "thread_pool_max": 200})
         elif fault_type == "disk_full":
             base.update({"latency_p99_ms": 0, "error_rate": 1.0,
                          "cpu_pct": 8, "memory_pct": 35,
@@ -392,9 +396,14 @@ def _make_logs(service: str, task: dict,
                     f"[ERROR] {service}: timeout waiting for connection after 5000ms\n"
                     f"[WARN]  {service}: connection leak detected in session handler")
         elif fault_type == "cpu_spike":
-            return (f"[ERROR] {service}: thread saturation — 200/200 threads active\n"
-                    f"[ERROR] {service}: CPU 99% — hot loop detected in JWTValidator.validate()\n"
-                    f"[WARN]  {service}: request queue depth 847, new requests timing out")
+            cpu = random.randint(85, 100)
+            thread = random.randint(150, 250)
+            logs = (f"[ERROR] {service}: thread saturation — {thread}/200 threads active\n"
+                    f"[ERROR] {service}: CPU {cpu}% — hot loop detected in JWTValidator.validate()\n"
+                    f"[WARN]  {service}: request queue depth {random.randint(500, 1000)}, new requests timing out")
+            if random.random() < 0.3:
+                logs += "\n[DEBUG] cache miss spike observed"
+            return logs
         elif fault_type == "disk_full":
             return (f"[FATAL] {service}: could not write to file \"pg_wal/000000010000002A\"\n"
                     f"[ERROR] {service}: ENOSPC: No space left on device — WAL at 48GB\n"
@@ -760,8 +769,7 @@ class IncidentResponseEnv:
             elif action.action_type == "restart_service":
                 _restart_fixes  = ("oom_crash", "cpu_spike", "memory_leak",
                                     "thread_pool_exhausted", "crash_loop",
-                                    "null_pointer", "connection_pool_exhausted",
-                                    "deadlock", "slow_query", "rate_limit_exceeded")
+                                    "null_pointer")
                 seq_bonus = _compute_sequence_bonus(
                     self._relevant_evidence_found, "restart_service"
                 )

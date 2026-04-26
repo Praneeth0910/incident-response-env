@@ -6,9 +6,14 @@ Exports trajectories in a format suitable for supervised fine-tuning.
 """
 
 from __future__ import annotations
+import sys
 import json
 from pathlib import Path
 from datetime import datetime
+
+# Allow importing from the project root when running as a script
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from environment import IncidentResponseEnv, TASKS
 from training.expert_agent import run_expert_on_all_tasks
 
@@ -35,9 +40,21 @@ def generate_sft_dataset(output_dir: str = "sft_data", num_episodes_per_task: in
         "by_domain": {},
     }
     
+    from training.expert_agent import ExpertAgent
+    
     # Run expert on each task
     print(f"Generating SFT dataset with {len(TASKS)} tasks x {num_episodes_per_task} episodes...")
-    trajectories = run_expert_on_all_tasks(env, TASKS)
+    trajectories = []
+    for task_id, task in TASKS.items():
+        for episode_num in range(num_episodes_per_task):
+            try:
+                expert = ExpertAgent(task)
+                traj = expert.run_episode(env, task_id, seed=episode_num)
+                trajectories.append(traj)
+                print(f"{task_id}: score={traj.final_score:.3f} reward={traj.total_reward:.3f} rca={traj.rca_correct}")
+            except Exception as e:
+                print(f"{task_id}: FAILED - {e}")
+                
     all_trajectories.extend(trajectories)
     
     # Compute statistics
@@ -88,4 +105,4 @@ def generate_sft_dataset(output_dir: str = "sft_data", num_episodes_per_task: in
 
 
 if __name__ == "__main__":
-    generate_sft_dataset(output_dir="sft_data", num_episodes_per_task=1)
+    generate_sft_dataset(output_dir="sft_data", num_episodes_per_task=19)

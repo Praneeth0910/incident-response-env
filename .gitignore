@@ -45,3 +45,10 @@ htmlcov/
 
 # benchmark output
 benchmark.json
+
+# unsloth and training bloat
+unsloth_env/
+sft_output/
+sre_agent_final/
+unsloth_compiled_cache/
+

@@ -7,6 +7,7 @@ Target: >0.80 episode score on all 20 tasks.
 """
 
 from __future__ import annotations
+import random
 from dataclasses import dataclass
 from typing import Optional, Dict, List, Any
 from models import Action
@@ -52,11 +53,17 @@ class ExpertAgent:
     def _cicd_plan(self, fault: str) -> list[dict]:
         """Optimal investigation path for CI/CD faults. Handles both single and multi-fault scenarios."""
         svc = self.task.get("fault_service")
+        svc2 = self.task.get("fault_service_2")
+        fault_type_2 = self.task.get("fault_type_2")
         if not svc:
             raise ValueError(f"Task {self.task.get('name', 'UNKNOWN')} missing required 'fault_service' field")
         
-        svc2 = self.task.get("fault_service_2")
-        fault_type_2 = self.task.get("fault_type_2")
+        # Start with observation actions
+        base = [
+            {"action_type": "read_logs",      "target": svc},
+            {"action_type": "check_metrics",  "target": svc},
+            {"action_type": "check_health",   "target": svc},
+        ]
         
         # Fault-specific evidence gathering (shared between both services if multi-fault)
         fault_evidence = {
@@ -113,6 +120,10 @@ class ExpertAgent:
                 {"action_type": "check_health", "target": None},
                 {"action_type": "read_logs", "target": None},
             ],
+            "memory_eviction": [
+                {"action_type": "check_metrics", "target": svc},
+                {"action_type": "read_logs", "target": svc},
+            ],
         }
         
         # Fixes per fault type (target will be filled in dynamically)
@@ -161,6 +172,9 @@ class ExpertAgent:
             ],
             "bad_deployment": [
                 {"action_type": "rollback_deployment", "target": None},
+            ],
+            "memory_eviction": [
+                {"action_type": "restart_service", "target": svc},
             ],
         }
         
@@ -216,6 +230,7 @@ class ExpertAgent:
             {"action_type": "check_metrics", "target": "kafka-broker"},
             {"action_type": "read_logs", "target": "kafka-broker"},
         ]
+        random.shuffle(base)
         
         fault_evidence = {
             "partition_corrupt": [
@@ -296,13 +311,13 @@ class ExpertAgent:
         
         return None  # episode complete
 
-    def run_episode(self, env, task_id: str = "task_cpu_spike") -> EpisodeTrajectory:
+    def run_episode(self, env, task_id: str = "task_cpu_spike", seed: Optional[int] = None) -> EpisodeTrajectory:
         """
         Run a full episode with the expert agent.
         Returns a trajectory object.
         """
         # Reset environment with this task
-        obs = env.reset(task_id)
+        obs = env.reset(task_id, seed=seed)
         history = []
         total_reward = 0.0
         

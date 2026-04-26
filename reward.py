@@ -7,8 +7,26 @@ calculators. This file follows the design in roadmap_regenerated.md.
 """
 
 from __future__ import annotations
+import re
 from dataclasses import dataclass, field
 from typing import Dict
+
+# REWARD SHAPING RULES (add to reward.py):
+#
+# PENALISE restart_service if:
+#   - obs contains "disk" and any value >= 85%  → apply -0.25 instead of -0.20
+#   - obs contains "under-replicated"           → restart is never the first step
+#   - step == 0 (first action is restart)       → apply -0.30, no second chances
+#
+# REWARD check_metrics if:
+#   - obs contains disk I/O > 80%               → +0.10 bonus (correct diagnosis path)
+#   - obs contains "ISR" or "replica"           → +0.08 bonus for metric check
+#
+# REWARD read_logs if:
+#   - obs contains "lag" or "consumer group"    → +0.08 bonus (correct investigation)
+#
+# These deltas are applied ON TOP of the existing reward table.
+# Cap cumulative reward at [-1.0, 1.0] as before.
 
 
 @dataclass
@@ -66,8 +84,35 @@ def compute_step_reward(
         return penalty
 
     if domain == "cicd":
-        return _cicd_reward(action, fault, step_count, max_s, evidence)
-    return _kafka_reward(action, fault, step_count, max_s, evidence)
+        reward = _cicd_reward(action, fault, step_count, max_s, evidence)
+    else:
+        reward = _kafka_reward(action, fault, step_count, max_s, evidence)
+
+    obs_str = str(observation).lower()
+
+    if action == "restart_service":
+        if step_count == 0:
+            reward = -0.30
+        elif "under-replicated" in obs_str and step_count == 0:
+            reward = -0.30
+        elif "disk" in obs_str:
+            pcts = re.findall(r'(\d+)%', obs_str)
+            if any(int(p) >= 85 for p in pcts):
+                reward = -0.25
+
+    elif action == "check_metrics":
+        if "disk" in obs_str:
+            pcts = re.findall(r'(\d+)%', obs_str)
+            if any(int(p) > 80 for p in pcts):
+                reward += 0.10
+        if "isr" in obs_str or "replica" in obs_str:
+            reward += 0.08
+
+    elif action == "read_logs":
+        if "lag" in obs_str or "consumer group" in obs_str:
+            reward += 0.08
+
+    return max(-1.0, min(1.0, reward))
 
 
 def _cicd_reward(action, fault, step_count, max_s, ev: EvidenceTracker) -> float:

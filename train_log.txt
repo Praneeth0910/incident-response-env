@@ -1,0 +1,98 @@
+🦥 Unsloth: Will patch your computer to enable 2x faster free finetuning.
+W0426 02:51:15.458000 45700 unsloth_env\Lib\site-packages\torch\distributed\elastic\multiprocessing\redirects.py:29] NOTE: Redirects are currently not supported in Windows or MacOs.
+C:\projects\incident-response-env\unsloth_env\Lib\site-packages\unsloth_zoo\temporary_patches\moe_utils.py:167: UserWarning: expandable_segments not supported on this platform (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\c10/cuda/CUDAAllocatorConfig.h:39.)
+  x = torch.ones((1, 8), device=device, dtype=dtype)
+Unsloth: Your Flash Attention 2 installation seems to be broken. Using Xformers instead. No performance changes will be seen.
+🦥 Unsloth Zoo will now patch everything to make training faster!
+Loading dataset...
+Dataset size: 750
+
+Loading model...
+==((====))==  Unsloth 2026.4.8: Fast Qwen3_5 patching. Transformers: 5.5.0.
+   \\   /|    NVIDIA GeForce RTX 4050 Laptop GPU. Num GPUs = 1. Max memory: 5.997 GB. Platform: Windows.
+O^O/ \_/ \    Torch: 2.10.0+cu130. CUDA: 8.9. CUDA Toolkit: 13.0. Triton: 3.6.0
+\        /    Bfloat16 = TRUE. FA [Xformers = 0.0.35. FA2 = False]
+ "-____-"     Free license: http://github.com/unslothai/unsloth
+Unsloth: Fast downloading is enabled - ignore downloading bars which are red colored!
+The fast path is not available because one of the required library is not installed. Falling back to torch implementation. To install follow https://github.com/fla-org/flash-linear-attention#installation and https://github.com/Dao-AILab/causal-conv1d
+Loading weights: 100%|█████████████████████████████████████████████████████████████| 617/617 [00:01<00:00, 457.77it/s]
+Adding LoRA...
+Map: 100%|█████████████████████████████████████████████████████████████████| 750/750 [00:00<00:00, 3719.30 examples/s]
+
+Starting training...
+Unsloth: Tokenizing ["text"]: 100%|████████████████████████████████████████| 750/750 [00:00<00:00, 1550.51 examples/s]
+The tokenizer has new PAD/BOS/EOS tokens that differ from the model config and generation config. The model config and generation config were aligned accordingly, being updated with the tokenizer's values. Updated tokens: {'eos_token_id': 248046}.
+==((====))==  Unsloth - 2x faster free finetuning | Num GPUs used = 1
+   \\   /|    Num examples = 750 | Num Epochs = 3 | Total steps = 282
+O^O/ \_/ \    Batch size per device = 1 | Gradient accumulation steps = 8
+\        /    Data Parallel GPUs = 1 | Total batch size (1 x 8 x 1) = 8
+ "-____-"     Trainable parameters = 10,911,744 of 2,224,153,408 (0.49% trained)
+  0%|                                                                                         | 0/282 [00:00<?, ?it/s]Unsloth: Will smartly offload gradients to save VRAM!
+{'loss': '2.083', 'grad_norm': '3.228', 'learning_rate': '2.759e-05', 'epoch': '0.05333'}
+{'loss': '1.661', 'grad_norm': '1.137', 'learning_rate': '6.207e-05', 'epoch': '0.1067'}                               
+{'loss': '1.272', 'grad_norm': '1.181', 'learning_rate': '9.655e-05', 'epoch': '0.16'}                                 
+{'loss': '0.8218', 'grad_norm': '4.368', 'learning_rate': '0.000131', 'epoch': '0.2133'}                               
+{'loss': '0.3862', 'grad_norm': '0.8915', 'learning_rate': '0.0001655', 'epoch': '0.2667'}                             
+{'loss': '0.2307', 'grad_norm': '0.4701', 'learning_rate': '0.0002', 'epoch': '0.32'}                                  
+{'loss': '0.1819', 'grad_norm': '0.5034', 'learning_rate': '0.000196', 'epoch': '0.3733'}                              
+{'loss': '0.1109', 'grad_norm': '0.4461', 'learning_rate': '0.0001921', 'epoch': '0.4267'}                             
+{'loss': '0.0487', 'grad_norm': '0.3939', 'learning_rate': '0.0001881', 'epoch': '0.48'}                               
+{'loss': '0.04102', 'grad_norm': '0.2713', 'learning_rate': '0.0001842', 'epoch': '0.5333'}                            
+ 18%|█████████████▊                                                                | 50/282 [19:35<1:14:47, 19.34s/it]Unsloth: Restored added_tokens_decoder metadata in ./sft_output\checkpoint-50\tokenizer_config.json.
+{'loss': '0.03013', 'grad_norm': '0.3953', 'learning_rate': '0.0001802', 'epoch': '0.5867'}
+{'loss': '0.01662', 'grad_norm': '0.1536', 'learning_rate': '0.0001763', 'epoch': '0.64'}                              
+{'loss': '0.01276', 'grad_norm': '0.2339', 'learning_rate': '0.0001723', 'epoch': '0.6933'}                            
+{'loss': '0.01194', 'grad_norm': '0.2421', 'learning_rate': '0.0001684', 'epoch': '0.7467'}                            
+{'loss': '0.009326', 'grad_norm': '0.6333', 'learning_rate': '0.0001644', 'epoch': '0.8'}                              
+{'loss': '0.01012', 'grad_norm': '0.2148', 'learning_rate': '0.0001605', 'epoch': '0.8533'}                            
+{'loss': '0.01148', 'grad_norm': '0.5813', 'learning_rate': '0.0001565', 'epoch': '0.9067'}                            
+{'loss': '0.00945', 'grad_norm': '0.1235', 'learning_rate': '0.0001526', 'epoch': '0.96'}                              
+{'loss': '0.008294', 'grad_norm': '0.09715', 'learning_rate': '0.0001486', 'epoch': '1.011'}                           
+{'loss': '0.008579', 'grad_norm': '0.1457', 'learning_rate': '0.0001447', 'epoch': '1.064'}                            
+ 35%|███████████████████████████▎                                                 | 100/282 [36:39<1:02:05, 20.47s/it]Unsloth: Restored added_tokens_decoder metadata in ./sft_output\checkpoint-100\tokenizer_config.json.
+{'loss': '0.007437', 'grad_norm': '0.08186', 'learning_rate': '0.0001407', 'epoch': '1.117'}
+{'loss': '0.006975', 'grad_norm': '0.1684', 'learning_rate': '0.0001368', 'epoch': '1.171'}                            
+{'loss': '0.00728', 'grad_norm': '0.05484', 'learning_rate': '0.0001328', 'epoch': '1.224'}                            
+{'loss': '0.006649', 'grad_norm': '0.07113', 'learning_rate': '0.0001289', 'epoch': '1.277'}                           
+{'loss': '0.006509', 'grad_norm': '0.03982', 'learning_rate': '0.0001249', 'epoch': '1.331'}                           
+{'loss': '0.007898', 'grad_norm': '0.05974', 'learning_rate': '0.0001209', 'epoch': '1.384'}                           
+{'loss': '0.008411', 'grad_norm': '0.1237', 'learning_rate': '0.000117', 'epoch': '1.437'}                             
+{'loss': '0.007229', 'grad_norm': '0.06276', 'learning_rate': '0.000113', 'epoch': '1.491'}                            
+{'loss': '0.007424', 'grad_norm': '0.04145', 'learning_rate': '0.0001091', 'epoch': '1.544'}                           
+{'loss': '0.006937', 'grad_norm': '0.07542', 'learning_rate': '0.0001051', 'epoch': '1.597'}                           
+ 53%|████████████████████████████████████████▉                                    | 150/282 [57:01<1:00:14, 27.38s/it]Unsloth: Restored added_tokens_decoder metadata in ./sft_output\checkpoint-150\tokenizer_config.json.
+{'loss': '0.006735', 'grad_norm': '0.0507', 'learning_rate': '0.0001012', 'epoch': '1.651'}
+{'loss': '0.007231', 'grad_norm': '0.04874', 'learning_rate': '9.723e-05', 'epoch': '1.704'}                           
+{'loss': '0.009427', 'grad_norm': '0.06907', 'learning_rate': '9.328e-05', 'epoch': '1.757'}                           
+{'loss': '0.006699', 'grad_norm': '0.0446', 'learning_rate': '8.933e-05', 'epoch': '1.811'}                            
+{'loss': '0.006477', 'grad_norm': '0.03895', 'learning_rate': '8.538e-05', 'epoch': '1.864'}                           
+{'loss': '0.006759', 'grad_norm': '0.05342', 'learning_rate': '8.142e-05', 'epoch': '1.917'}                           
+{'loss': '0.006569', 'grad_norm': '0.03173', 'learning_rate': '7.747e-05', 'epoch': '1.971'}                           
+{'loss': '0.006561', 'grad_norm': '0.0409', 'learning_rate': '7.352e-05', 'epoch': '2.021'}                            
+{'loss': '0.006225', 'grad_norm': '0.06712', 'learning_rate': '6.957e-05', 'epoch': '2.075'}                           
+{'loss': '0.006875', 'grad_norm': '0.04603', 'learning_rate': '6.561e-05', 'epoch': '2.128'}                           
+ 71%|██████████████████████████████████████████████████████▌                      | 200/282 [1:28:08<28:34, 20.91s/it]Unsloth: Restored added_tokens_decoder metadata in ./sft_output\checkpoint-200\tokenizer_config.json.
+{'loss': '0.006703', 'grad_norm': '0.07391', 'learning_rate': '6.166e-05', 'epoch': '2.181'}
+{'loss': '0.006554', 'grad_norm': '0.04373', 'learning_rate': '5.771e-05', 'epoch': '2.235'}                           
+{'loss': '0.006942', 'grad_norm': '0.06248', 'learning_rate': '5.375e-05', 'epoch': '2.288'}                           
+{'loss': '0.00644', 'grad_norm': '0.036', 'learning_rate': '4.98e-05', 'epoch': '2.341'}                               
+{'loss': '0.006386', 'grad_norm': '0.07518', 'learning_rate': '4.585e-05', 'epoch': '2.395'}                           
+{'loss': '0.006192', 'grad_norm': '0.03929', 'learning_rate': '4.19e-05', 'epoch': '2.448'}                            
+{'loss': '0.00681', 'grad_norm': '0.06478', 'learning_rate': '3.794e-05', 'epoch': '2.501'}                            
+{'loss': '0.006783', 'grad_norm': '0.04117', 'learning_rate': '3.399e-05', 'epoch': '2.555'}                           
+{'loss': '0.007049', 'grad_norm': '0.04047', 'learning_rate': '3.004e-05', 'epoch': '2.608'}                           
+{'loss': '0.00603', 'grad_norm': '0.04599', 'learning_rate': '2.609e-05', 'epoch': '2.661'}                            
+ 89%|████████████████████████████████████████████████████████████████████▎        | 250/282 [1:47:28<12:47, 23.99s/it]Unsloth: Restored added_tokens_decoder metadata in ./sft_output\checkpoint-250\tokenizer_config.json.
+{'loss': '0.006197', 'grad_norm': '0.03868', 'learning_rate': '2.213e-05', 'epoch': '2.715'}
+{'loss': '0.006578', 'grad_norm': '0.0485', 'learning_rate': '1.818e-05', 'epoch': '2.768'}                            
+{'loss': '0.006231', 'grad_norm': '0.05707', 'learning_rate': '1.423e-05', 'epoch': '2.821'}                           
+{'loss': '0.006479', 'grad_norm': '0.05336', 'learning_rate': '1.028e-05', 'epoch': '2.875'}                           
+{'loss': '0.006138', 'grad_norm': '0.04247', 'learning_rate': '6.324e-06', 'epoch': '2.928'}                           
+{'loss': '0.006653', 'grad_norm': '0.0413', 'learning_rate': '2.372e-06', 'epoch': '2.981'}                            
+100%|█████████████████████████████████████████████████████████████████████████████| 282/282 [1:57:27<00:00, 17.99s/it]Unsloth: Restored added_tokens_decoder metadata in ./sft_output\checkpoint-282\tokenizer_config.json.
+{'train_runtime': '7049', 'train_samples_per_second': '0.319', 'train_steps_per_second': '0.04', 'train_loss': '0.1279', 'epoch': '3'}
+100%|█████████████████████████████████████████████████████████████████████████████| 282/282 [1:57:29<00:00, 25.00s/it] 
+
+Saving model...
+Unsloth: Restored added_tokens_decoder metadata in ./sft_output/final\tokenizer_config.json.
+DONE ✅
