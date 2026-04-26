@@ -327,7 +327,7 @@ def create_dashboard(env_instance: Optional[IncidentResponseEnv] = None) -> gr.B
         try:
             action = Action(action_type=action_type, target=target)
             obs, reward, done, info = env.step(action)
-            state.update({"alert": obs.alert, "last_reward": float(reward.value), "last_reason": reward.reason, "done": done, "step": obs.step, "score": env.grade() if done else clamp_task_score(info.get("cumulative_reward", 0.0)), "status": "COMPLETE" if done else "ACTIVE"})
+            state.update({"alert": obs.alert, "last_reward": float(reward.value), "last_reason": reward.reason, "done": done, "step": obs.step, "score": env.grade() if done else float(info.get("cumulative_reward", 0.0)), "status": "COMPLETE" if done else "ACTIVE"})
             state["history"] = list(state["history"]) + [{"step": obs.step, "reward": float(reward.value), "action": action_type, "target": target, "done": done}]
         except Exception as exc: state["status"] = "ERROR"; state["error"] = str(exc)
         return _build_episode_outputs(env, state)
@@ -363,14 +363,25 @@ def create_dashboard(env_instance: Optional[IncidentResponseEnv] = None) -> gr.B
                         target_dd = gr.Dropdown(choices=list(SERVICES), value=SERVICES[0], label="TARGET")
                         step_btn = gr.Button("EXECUTE", variant="primary")
                 alert_html, status_html, score_html, footer_html = gr.HTML(""), gr.HTML(""), gr.HTML(""), gr.HTML("")
+                timeline_html, service_map_html = gr.HTML(""), gr.HTML("")
                 history_df = gr.Dataframe(headers=["STEP", "REW", "ACTION", "TARGET", "DONE"], value=_history_rows(initial_state))
-            with gr.TabItem("/live"): timeline_html, service_map_html = gr.HTML(""), gr.HTML("")
-            with gr.TabItem("/benchmark"): gr.Dataframe(headers=["#", "MODEL", "AVG", "SOLVED", "TS"], value=_benchmark_rows(initial_store))
-            with gr.TabItem("/leaderboard"): gr.Dataframe(headers=["#", "MODEL", "AVG", "SOLVED", "TS"], value=_benchmark_rows(initial_store))
+            with gr.TabItem("/live"): 
+                gr.HTML("Timeline:"); gr.HTML(value=timeline_html.value if hasattr(timeline_html, 'value') else "")
+                gr.HTML("Service Map:"); gr.HTML(value=service_map_html.value if hasattr(service_map_html, 'value') else "")
+            with gr.TabItem("/benchmark"): 
+                benchmark_df = gr.Dataframe(headers=["#", "MODEL", "AVG", "SOLVED", "TS"], value=_benchmark_rows(initial_store))
+                benchmark_refresh_btn = gr.Button("REFRESH", size="sm")
+            with gr.TabItem("/leaderboard"): 
+                leaderboard_df = gr.Dataframe(headers=["#", "MODEL", "AVG", "SOLVED", "TS"], value=_benchmark_rows(initial_store))
+                leaderboard_refresh_btn = gr.Button("REFRESH", size="sm")
             with gr.TabItem("/help"): gr.HTML(_render_help_terminal())
 
         reset_btn.click(fn=reset_task, inputs=[task_dd, ui_state], outputs=[ui_state, status_html, alert_html, timeline_html, history_df, score_html, service_map_html, footer_html])
         step_btn.click(fn=execute_action, inputs=[task_dd, action_dd, target_dd, ui_state], outputs=[ui_state, status_html, alert_html, timeline_html, history_df, score_html, service_map_html, footer_html])
         action_dd.change(fn=lambda a: gr.update(choices=["postgres-db"] if a=="run_db_query" else list(SERVICES)), inputs=[action_dd], outputs=[target_dd])
+        
+        # BUG FIX 5: Add refresh handlers for benchmark/leaderboard tabs
+        benchmark_refresh_btn.click(fn=lambda: _benchmark_rows(load_benchmark_store(BENCHMARK_FILE)), outputs=[benchmark_df])
+        leaderboard_refresh_btn.click(fn=lambda: _benchmark_rows(load_benchmark_store(BENCHMARK_FILE)), outputs=[leaderboard_df])
 
     return demo
