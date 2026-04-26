@@ -1,3 +1,12 @@
+---
+title: Incident Response Environment
+emoji: 🚨
+colorFrom: blue
+colorTo: red
+sdk: static
+pinned: false
+---
+
 # 🚨 Incident Response Environment
 
 ### *An OpenEnv-compliant RL benchmark where AI agents diagnose production microservices failures*
