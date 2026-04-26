@@ -50,128 +50,165 @@ class ExpertAgent:
         return self._kafka_plan(fault)
 
     def _cicd_plan(self, fault: str) -> list[dict]:
-        """Optimal investigation path for CI/CD faults."""
+        """Optimal investigation path for CI/CD faults. Handles both single and multi-fault scenarios."""
         svc = self.task.get("fault_service")
         if not svc:
             raise ValueError(f"Task {self.task.get('name', 'UNKNOWN')} missing required 'fault_service' field")
         
-        # Start with observation actions
-        base = [
-            {"action_type": "read_logs",      "target": svc},
-            {"action_type": "check_metrics",  "target": svc},
-            {"action_type": "check_health",   "target": svc},
-        ]
+        svc2 = self.task.get("fault_service_2")
+        fault_type_2 = self.task.get("fault_type_2")
         
-        # Fault-specific evidence gathering
+        # Fault-specific evidence gathering (shared between both services if multi-fault)
         fault_evidence = {
             "cpu_spike": [
-                {"action_type": "check_health", "target": svc},
+                {"action_type": "check_health", "target": None},
             ],
             "secret_rotation_break": [
-                {"action_type": "read_logs", "target": svc},
+                {"action_type": "read_logs", "target": None},
                 {"action_type": "run_db_query", "target": "postgres-db"},
             ],
             "connection_pool_exhausted": [
                 {"action_type": "run_db_query", "target": "postgres-db"},
-                {"action_type": "read_logs", "target": svc},
+                {"action_type": "read_logs", "target": None},
             ],
             "memory_leak": [
-                {"action_type": "check_metrics", "target": svc},
-                {"action_type": "read_logs", "target": svc},
+                {"action_type": "check_metrics", "target": None},
+                {"action_type": "read_logs", "target": None},
             ],
             "thread_pool_exhausted": [
-                {"action_type": "check_metrics", "target": svc},
-                {"action_type": "check_health", "target": svc},
+                {"action_type": "check_metrics", "target": None},
+                {"action_type": "check_health", "target": None},
             ],
             "canary_misconfiguration": [
-                {"action_type": "check_metrics", "target": svc},
-                {"action_type": "read_logs", "target": svc},
+                {"action_type": "check_metrics", "target": None},
+                {"action_type": "read_logs", "target": None},
             ],
             "clock_skew": [
-                {"action_type": "read_logs", "target": svc},
-                {"action_type": "check_metrics", "target": svc},
+                {"action_type": "read_logs", "target": None},
+                {"action_type": "check_metrics", "target": None},
             ],
             "disk_full": [
                 {"action_type": "run_db_query", "target": "postgres-db"},
-                {"action_type": "read_logs", "target": svc},
+                {"action_type": "read_logs", "target": None},
             ],
             "deadlock": [
                 {"action_type": "run_db_query", "target": "postgres-db"},
             ],
             "cert_expired": [
-                {"action_type": "check_health", "target": svc},
+                {"action_type": "check_health", "target": None},
             ],
             "slow_query": [
                 {"action_type": "run_db_query", "target": "postgres-db"},
             ],
             "null_pointer": [
-                {"action_type": "read_logs", "target": svc},
+                {"action_type": "read_logs", "target": None},
             ],
             "crash_loop": [
-                {"action_type": "check_health", "target": svc},
+                {"action_type": "check_health", "target": None},
             ],
             "rate_limit_exceeded": [
-                {"action_type": "check_metrics", "target": svc},
+                {"action_type": "check_metrics", "target": None},
             ],
             "bad_deployment": [
-                {"action_type": "check_health", "target": svc},
-                {"action_type": "read_logs", "target": svc},
+                {"action_type": "check_health", "target": None},
+                {"action_type": "read_logs", "target": None},
             ],
         }
         
-        # Fixes per fault type
+        # Fixes per fault type (target will be filled in dynamically)
         fixes = {
             "cpu_spike": [
-                {"action_type": "restart_service", "target": svc},
+                {"action_type": "restart_service", "target": None},
             ],
             "secret_rotation_break": [
-                {"action_type": "rollback_deployment", "target": svc},
+                {"action_type": "rollback_deployment", "target": None},
             ],
             "connection_pool_exhausted": [
-                {"action_type": "restart_service", "target": svc},
+                {"action_type": "restart_service", "target": None},
             ],
             "memory_leak": [
-                {"action_type": "restart_service", "target": svc},
+                {"action_type": "restart_service", "target": None},
             ],
             "thread_pool_exhausted": [
-                {"action_type": "restart_service", "target": svc},
+                {"action_type": "restart_service", "target": None},
             ],
             "canary_misconfiguration": [
-                {"action_type": "rollback_deployment", "target": svc},
+                {"action_type": "rollback_deployment", "target": None},
             ],
             "clock_skew": [
-                {"action_type": "rollback_deployment", "target": svc},
+                {"action_type": "rollback_deployment", "target": None},
             ],
             "disk_full": [
-                {"action_type": "rollback_deployment", "target": svc},
+                {"action_type": "rollback_deployment", "target": None},
             ],
             "deadlock": [
-                {"action_type": "restart_service", "target": svc},
+                {"action_type": "restart_service", "target": None},
             ],
             "cert_expired": [
-                {"action_type": "rollback_deployment", "target": svc},
+                {"action_type": "rollback_deployment", "target": None},
             ],
             "slow_query": [
-                {"action_type": "restart_service", "target": svc},
+                {"action_type": "restart_service", "target": None},
             ],
             "null_pointer": [
-                {"action_type": "rollback_deployment", "target": svc},
+                {"action_type": "rollback_deployment", "target": None},
             ],
             "crash_loop": [
-                {"action_type": "rollback_deployment", "target": svc},
+                {"action_type": "rollback_deployment", "target": None},
             ],
             "rate_limit_exceeded": [
-                {"action_type": "restart_service", "target": svc},
+                {"action_type": "restart_service", "target": None},
             ],
             "bad_deployment": [
-                {"action_type": "rollback_deployment", "target": svc},
+                {"action_type": "rollback_deployment", "target": None},
             ],
         }
         
-        fault_component = svc
-        plan = base + fault_evidence.get(fault, []) + fixes.get(fault, [])
-        plan.append({"action_type": "declare_rca", "target": fault_component})
-        print(f"BUG FIXED: CICD plan now dynamically targets fault_service. Task using service: {svc}")
+        plan = []
+        
+        # Multi-fault scenario: simplified investigation to avoid redundancy penalties
+        if svc2 and fault_type_2:
+            # First fault: base investigation only + fix
+            plan.extend([
+                {"action_type": "read_logs",      "target": svc},
+                {"action_type": "check_metrics",  "target": svc},
+                {"action_type": "check_health",   "target": svc},
+            ])
+            fixes1 = [{"action_type": act["action_type"], "target": svc if act["target"] is None else act["target"]} 
+                      for act in fixes.get(fault, [])]
+            plan.extend(fixes1)
+            
+            # Second fault: base investigation only + fix
+            plan.extend([
+                {"action_type": "read_logs",      "target": svc2},
+                {"action_type": "check_metrics",  "target": svc2},
+                {"action_type": "check_health",   "target": svc2},
+            ])
+            fixes2 = [{"action_type": act["action_type"], "target": svc2 if act["target"] is None else act["target"]} 
+                      for act in fixes.get(fault_type_2, [])]
+            plan.extend(fixes2)
+            
+            # Declare RCA with both services (comma-separated)
+            fault_components = f"{svc},{svc2}"
+            debug_msg = f"Multi-fault scenario: investigating {svc} ({fault}) and {svc2} ({fault_type_2})"
+        else:
+            # Single-fault scenario: full investigation with fault-specific evidence
+            base1 = [
+                {"action_type": "read_logs",      "target": svc},
+                {"action_type": "check_metrics",  "target": svc},
+                {"action_type": "check_health",   "target": svc},
+            ]
+            evidence1 = [{"action_type": act["action_type"], "target": svc if act["target"] is None else act["target"]} 
+                         for act in fault_evidence.get(fault, [])]
+            fixes1 = [{"action_type": act["action_type"], "target": svc if act["target"] is None else act["target"]} 
+                      for act in fixes.get(fault, [])]
+            
+            plan.extend(base1 + evidence1 + fixes1)
+            fault_components = svc
+            debug_msg = f"Single-fault scenario: investigating {svc} ({fault})"
+        
+        plan.append({"action_type": "declare_rca", "target": fault_components})
+        print(f"[EXPERT AGENT] {debug_msg}. Final RCA target: {fault_components}")
         return plan
 
     def _kafka_plan(self, fault: str) -> list[dict]:

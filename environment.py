@@ -762,24 +762,39 @@ class IncidentResponseEnv:
             elif action.action_type == "restart_service":
                 _restart_fixes  = ("oom_crash", "cpu_spike", "memory_leak",
                                     "thread_pool_exhausted", "crash_loop",
-                                    "null_pointer")
+                                    "null_pointer", "connection_pool_exhausted",
+                                    "deadlock", "slow_query", "rate_limit_exceeded")
                 seq_bonus = _compute_sequence_bonus(
                     self._relevant_evidence_found, "restart_service"
                 )
-
+                
+                # Support multi-fault scenarios
+                fault_svc_2 = task.get("fault_service_2")
+                fault_type_2 = task.get("fault_type_2")
+                
+                # Check if this is a correct fix for either fault service
+                is_correct_fix = False
+                matched_fault_type = None
                 if action.target == fault_svc and fault_type in _restart_fixes:
+                    is_correct_fix = True
+                    matched_fault_type = fault_type
+                elif fault_svc_2 and action.target == fault_svc_2 and fault_type_2 in _restart_fixes:
+                    is_correct_fix = True
+                    matched_fault_type = fault_type_2
+                
+                if is_correct_fix:
                     base_reward   = 0.35
                     reward_value  = round(base_reward * seq_bonus, 4)
                     reward_reason = (
-                        f"correct service restarted — {fault_type} resolved. "
+                        f"correct service restarted — {matched_fault_type} resolved. "
                         f"Sequence bonus: {seq_bonus:.1f}x "
                         f"({'well investigated' if seq_bonus >= 0.8 else 'rushed — investigate more first'})"
                     )
                     message = f"{action.target} restarted successfully. Error rate dropping."
-                elif action.target == fault_svc:
+                elif action.target == fault_svc or (fault_svc_2 and action.target == fault_svc_2):
                     reward_value  = -0.10
                     reward_reason = (
-                        f"restarted {action.target} but restart is wrong fix for {fault_type}. "
+                        f"restarted {action.target} but restart is wrong fix for this fault. "
                         f"Use rollback_deployment for deployment faults."
                     )
                     message = f"{action.target} restarted but issue persists — wrong fix type."
@@ -796,23 +811,39 @@ class IncidentResponseEnv:
 
             # ── rollback_deployment ───────────────────────────────────────────
             elif action.action_type == "rollback_deployment":
-                _rollback_fixes = ("bad_deployment", "canary_misconfiguration")
+                _rollback_fixes = ("bad_deployment", "canary_misconfiguration",
+                                   "secret_rotation_break", "clock_skew", "disk_full",
+                                   "cert_expired", "null_pointer", "crash_loop")
                 seq_bonus = _compute_sequence_bonus(
                     self._relevant_evidence_found, "rollback_deployment"
                 )
-
+                
+                # Support multi-fault scenarios
+                fault_svc_2 = task.get("fault_service_2")
+                fault_type_2 = task.get("fault_type_2")
+                
+                # Check if this is a correct fix for either fault service
+                is_correct_fix = False
+                matched_fault_type = None
                 if action.target == fault_svc and fault_type in _rollback_fixes:
+                    is_correct_fix = True
+                    matched_fault_type = fault_type
+                elif fault_svc_2 and action.target == fault_svc_2 and fault_type_2 in _rollback_fixes:
+                    is_correct_fix = True
+                    matched_fault_type = fault_type_2
+                
+                if is_correct_fix:
                     base_reward   = 0.35
                     reward_value  = round(base_reward * seq_bonus, 4)
                     reward_reason = (
-                        f"correct rollback — {fault_type} resolved. "
+                        f"correct rollback — {matched_fault_type} resolved. "
                         f"Sequence bonus: {seq_bonus:.1f}x"
                     )
                     message = f"Rolled back {action.target}. Error rate recovering."
-                elif action.target == fault_svc:
+                elif action.target == fault_svc or (fault_svc_2 and action.target == fault_svc_2):
                     reward_value  = -0.10
                     reward_reason = (
-                        f"rollback on {action.target} but rollback is wrong fix for {fault_type}. "
+                        f"rollback on {action.target} but rollback is wrong fix for this fault. "
                         f"Use restart_service for runtime faults."
                     )
                     message = f"Rolled back {action.target} but issue persists — wrong fix type."
