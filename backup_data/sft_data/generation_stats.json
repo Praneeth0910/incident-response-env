@@ -1,0 +1,15 @@
+{
+  "total_episodes": 304,
+  "successful_rcas": 285,
+  "avg_score": 0.9096874999999965,
+  "avg_reward": 1.1927500000000015,
+  "by_domain": {
+    "cicd": {
+      "count": 304,
+      "avg_score": 0.9096874999999965,
+      "successful_rcas": 285
+    }
+  },
+  "generated_at": "2026-04-26T02:14:41.025502",
+  "trajectories_file": "sft_data\\trajectories.jsonl"
+}
