@@ -1,10 +1,13 @@
 ---
-title: Incident Response Environment
+title: Incident Response Env
 emoji: 🚨
-colorFrom: blue
-colorTo: red
-sdk: static
+colorFrom: red
+colorTo: blue
+sdk: docker
+app_file: app.py
 pinned: false
+license: apache-2.0
+short_description: LLM agents act as on-call SREs.
 ---
 
 # 🚨 Incident Response Environment
