@@ -25,6 +25,7 @@ if str(_root) not in sys.path:
 
 from environment import IncidentResponseEnv, TASKS, SERVICES
 from models import Action
+from training.expert_agent import ExpertAgent
 
 __all__ = ["create_dashboard", "CUSTOM_CSS", "UI_THEME"]
 
@@ -298,6 +299,95 @@ def _history_rows(state: Dict[str, Any]) -> List[List[Any]]:
 def _benchmark_rows(store: Dict[str, Any]) -> List[List[Any]]:
     return [[idx+1, i["model"], i["average_score"], f"{i['tasks_solved']}/{i['tasks_total']}", i["timestamp"]] for idx, i in enumerate(store.get("leaderboard", []))]
 
+def run_custom_model_benchmark(model_name: str) -> Tuple[Dict[str, Any], List[List[Any]]]:
+    """Run benchmark using expert agent and compare with stored results."""
+    if not model_name or not model_name.strip():
+        return {"error": "Model name required"}, []
+    
+    model_name = model_name.strip()
+    env = IncidentResponseEnv()
+    
+    # Run expert agent on all tasks
+    scores = []
+    steps_list = []
+    task_results = {}
+    
+    for task_id, task in TASKS.items():
+        try:
+            obs = env.reset(task_id=task_id)
+            expert = ExpertAgent(task)
+            
+            # Get expert plan
+            domain = task.get("domain", "cicd")
+            if domain == "cicd":
+                plan = expert._cicd_plan(task.get("fault_type"))
+            elif domain == "kafka":
+                plan = expert._kafka_plan(task.get("fault_type"))
+            else:
+                continue
+            
+            # Execute plan
+            total_reward = 0.0
+            for action_dict in plan:
+                action = Action(**action_dict)
+                obs, reward, done, info = env.step(action)
+                total_reward += reward.value
+                if done:
+                    break
+            
+            grade = env.grade()
+            scores.append(grade)
+            steps_list.append(env._step_count)
+            task_results[task_id] = {
+                "score": grade,
+                "steps": env._step_count,
+                "success": grade >= 0.70
+            }
+        except Exception as e:
+            task_results[task_id] = {"error": str(e)}
+    
+    # Calculate metrics
+    avg_score = round(sum(scores) / len(scores), 4) if scores else 0.0
+    avg_steps = round(sum(steps_list) / len(steps_list), 1) if steps_list else 0
+    tasks_solved = sum(1 for s in scores if s >= 0.70)
+    tasks_total = len(TASKS)
+    
+    result = {
+        "model": model_name,
+        "average_score": avg_score,
+        "tasks_solved": tasks_solved,
+        "tasks_total": tasks_total,
+        "avg_steps": avg_steps,
+        "task_results": task_results
+    }
+    
+    # Load existing benchmarks and create comparison
+    store = load_benchmark_store(BENCHMARK_FILE)
+    comparison = []
+    
+    # Add existing models
+    for entry in store.get("leaderboard", []):
+        comparison.append([
+            entry.get("model", "Unknown"),
+            entry.get("average_score", 0.0),
+            f"{entry.get('tasks_solved', 0)}/{entry.get('tasks_total', len(TASKS))}",
+            entry.get("timestamp", "N/A")
+        ])
+    
+    # Add current model
+    from datetime import datetime
+    comparison.append([
+        model_name,
+        avg_score,
+        f"{tasks_solved}/{tasks_total}",
+        datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    ])
+    
+    # Sort by average score (descending)
+    comparison.sort(key=lambda x: x[1], reverse=True)
+    
+    return result, comparison
+
 def _render_help_terminal() -> str:
     return """<div class="help-terminal"><div style="border-bottom: 1px solid #333; padding-bottom: 10px; margin-bottom: 20px; color: #888; font-size: 12px;">INCIDENT-RESPONSE手册页</div>
 <div style="color: var(--amber); font-weight: 900; margin-bottom: 10px;">OPERATIONS</div>
@@ -371,6 +461,24 @@ def create_dashboard(env_instance: Optional[IncidentResponseEnv] = None) -> gr.B
             with gr.TabItem("/benchmark"): 
                 benchmark_df = gr.Dataframe(headers=["#", "MODEL", "AVG", "SOLVED", "TS"], value=_benchmark_rows(initial_store))
                 benchmark_refresh_btn = gr.Button("REFRESH", size="sm")
+                
+                gr.Markdown("---")
+                gr.Markdown("## 🚀 Evaluate Your Model")
+                gr.Markdown("Run benchmarks on a custom model using expert agent baseline.")
+                
+                with gr.Row():
+                    model_input = gr.Textbox(
+                        label="Model Name",
+                        placeholder="Enter model identifier (e.g., 'my-model-v1', 'gpt-4-experiment')",
+                        scale=3
+                    )
+                    run_model_btn = gr.Button("🔬 Run Benchmark", variant="primary", scale=1)
+                
+                model_result_output = gr.JSON(label="📊 Benchmark Results")
+                comparison_output = gr.Dataframe(
+                    headers=["MODEL", "AVG SCORE", "SOLVED", "TIMESTAMP"],
+                    label="📈 Comparison with Existing Models"
+                )
             with gr.TabItem("/leaderboard"): 
                 leaderboard_df = gr.Dataframe(headers=["#", "MODEL", "AVG", "SOLVED", "TS"], value=_benchmark_rows(initial_store))
                 leaderboard_refresh_btn = gr.Button("REFRESH", size="sm")
@@ -470,6 +578,14 @@ Expand scenario library with edge cases, multi-fault incidents, and time-sensiti
         # BUG FIX 5: Add refresh handlers for benchmark/leaderboard tabs
         benchmark_refresh_btn.click(fn=lambda: _benchmark_rows(load_benchmark_store(BENCHMARK_FILE)), outputs=[benchmark_df])
         leaderboard_refresh_btn.click(fn=lambda: _benchmark_rows(load_benchmark_store(BENCHMARK_FILE)), outputs=[leaderboard_df])
+        
+        # Custom model benchmarking
+        run_model_btn.click(
+            fn=run_custom_model_benchmark,
+            inputs=[model_input],
+            outputs=[model_result_output, comparison_output]
+        )
 
-    print("✅ About Us page successfully added to UI")
+    print("[OK] About Us page successfully added to UI")
+    print("[OK] Custom model benchmarking feature added successfully")
     return demo
