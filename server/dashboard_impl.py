@@ -374,6 +374,93 @@ def create_dashboard(env_instance: Optional[IncidentResponseEnv] = None) -> gr.B
             with gr.TabItem("/leaderboard"): 
                 leaderboard_df = gr.Dataframe(headers=["#", "MODEL", "AVG", "SOLVED", "TS"], value=_benchmark_rows(initial_store))
                 leaderboard_refresh_btn = gr.Button("REFRESH", size="sm")
+            with gr.TabItem("/about"):
+                gr.Markdown("""
+# Incident Response Environment — RL Benchmark System
+
+---
+
+## What This Project Does
+
+This system simulates real-world incident scenarios to enable reinforcement learning agents to learn automated debugging and response strategies. It provides a structured environment for training intelligent automation systems.
+
+**Core capabilities:**
+- Simulates realistic system failures and cascading incidents
+- Enables agents to take investigation and mitigation actions
+- Provides immediate feedback through reward signals
+
+---
+
+## Core Features
+
+### Action-Based Environment
+Agents can execute commands like `check_health`, `restart_service`, `rollback_deployment`, and `declare_rca` on target services.
+
+### Reward-Driven Learning
+Every action receives a reward signal that guides the agent toward optimal investigation sequences and correct root cause identification.
+
+### Multi-Step Decision Making
+Episodes require 5-25 steps of sequential reasoning to correctly diagnose and resolve incidents.
+
+### Dual Operating Modes
+- **Training Mode**: Learn optimal policies through trial and error
+- **Benchmarking Mode**: Evaluate trained models against standardized scenarios
+
+---
+
+## System Architecture
+
+```
+Agent → Action → Environment → State Update → Reward → Agent
+```
+
+**Flow:**
+1. Agent observes incident alert and system state
+2. Agent selects action (investigate, fix, or declare RCA)
+3. Environment processes action and updates state
+4. Reward signal guides learning (positive for progress, negative for errors)
+5. Loop continues until incident resolved or max steps reached
+
+---
+
+## Why This Matters
+
+### Reduces Manual Debugging Time
+Automates the investigation process that typically requires experienced SREs.
+
+### Enables Automated Incident Response
+Trains agents to handle common failure patterns without human intervention.
+
+### Provides Standardized Benchmarking
+Creates reproducible evaluation framework for comparing different RL approaches.
+
+---
+
+## Tech Stack
+
+- **Python 3.10+**: Core implementation language
+- **Reinforcement Learning**: GRPO / TRL for policy optimization
+- **Gradio UI**: Interactive dashboard for training and evaluation
+- **Custom Environment**: OpenAI Gym-compatible RL environment (`environment.py`)
+- **Domain Simulators**: CICD and Kafka fault injection systems
+
+---
+
+## Future Scope
+
+### Multi-Agent Systems
+Coordinate multiple specialized agents for complex distributed incidents.
+
+### Real Infrastructure Integration
+Deploy trained policies to production systems with safety guardrails.
+
+### Advanced Benchmarking
+Expand scenario library with edge cases, multi-fault incidents, and time-sensitive failures.
+
+---
+
+*Built for RL researchers, SRE teams, and automation engineers seeking intelligent incident response.*
+                """)
             with gr.TabItem("/help"): gr.HTML(_render_help_terminal())
 
         reset_btn.click(fn=reset_task, inputs=[task_dd, ui_state], outputs=[ui_state, status_html, alert_html, timeline_html, history_df, score_html, service_map_html, footer_html])
@@ -384,4 +471,5 @@ def create_dashboard(env_instance: Optional[IncidentResponseEnv] = None) -> gr.B
         benchmark_refresh_btn.click(fn=lambda: _benchmark_rows(load_benchmark_store(BENCHMARK_FILE)), outputs=[benchmark_df])
         leaderboard_refresh_btn.click(fn=lambda: _benchmark_rows(load_benchmark_store(BENCHMARK_FILE)), outputs=[leaderboard_df])
 
+    print("✅ About Us page successfully added to UI")
     return demo
